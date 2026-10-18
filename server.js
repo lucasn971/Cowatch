@@ -19,6 +19,13 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/health') { res.end('ok'); return; }
+  if (url.pathname === '/ice') { // serveurs pour la voix : STUN toujours, relais TURN si configuré (indispensable en 4G)
+    iceServers().then(ice => {
+      res.setHeader('content-type', 'application/json'); res.setHeader('access-control-allow-origin', '*');
+      res.end(JSON.stringify({ iceServers: ice }));
+    });
+    return;
+  }
   if (url.pathname === '/stats') { // compteur minimal pour le test (aucune donnée perso)
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ rooms: rooms.size, clients: [...rooms.values()].reduce((n, r) => n + r.size, 0), totals: stats }));
@@ -45,6 +52,27 @@ const server = http.createServer((req, res) => {
     }
   });
 });
+
+// ---------- Relais audio TURN ----------
+// Cloudflare Realtime (1 000 Go/mois gratuits) : variables CF_TURN_KEY_ID et CF_TURN_API_TOKEN sur l'hébergeur.
+// Identifiants temporaires (24 h) mis en cache 12 h. Sinon : TURN_URLS / TURN_USERNAME / TURN_CREDENTIAL, sinon STUN seul.
+let iceCache = null;
+async function iceServers() {
+  const stun = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (process.env.CF_TURN_KEY_ID && process.env.CF_TURN_API_TOKEN) {
+    if (iceCache && iceCache.until > Date.now()) return iceCache.ice;
+    try {
+      const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${process.env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, {
+        method: 'POST', headers: { Authorization: `Bearer ${process.env.CF_TURN_API_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 })
+      });
+      const j = await r.json();
+      if (Array.isArray(j.iceServers) && j.iceServers.length) { iceCache = { ice: j.iceServers, until: Date.now() + 12 * 3600 * 1000 }; return j.iceServers; }
+      console.error('TURN Cloudflare : réponse inattendue', r.status);
+    } catch (e) { console.error('TURN Cloudflare indisponible', e.message); }
+  }
+  if (process.env.TURN_URLS) return [...stun, { urls: process.env.TURN_URLS.split(',').map(u => u.trim()), username: process.env.TURN_USERNAME || '', credential: process.env.TURN_CREDENTIAL || '' }];
+  return stun;
+}
 
 // ---------- WebSocket minimal ----------
 function encodeFrame(str, opcode = 0x1) {

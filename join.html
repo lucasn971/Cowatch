@@ -54,6 +54,10 @@ li{margin:6px 0}
   }
   const box = document.getElementById('join-data'); box.dataset.code = code; box.dataset.target = target;
   document.getElementById('noext').href = '/s/' + code;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) { // pas d'extension possible sur téléphone
+    document.getElementById('install').innerHTML = '<p class="muted" style="margin-top:16px">Sur téléphone, tu rejoins le salon avec la voix et le chat. Lance le programme sur ton appli ou ta TV à côté.</p>';
+    const b = document.getElementById('noext'); b.classList.remove('ghost'); b.textContent = 'Rejoindre depuis ce téléphone (voix + chat)';
+  }
   // L'extension (join.js) affiche le bouton "Rejoindre" ; on masque alors les étapes d'installation.
   new MutationObserver(() => { if (!document.getElementById('join-go').hidden) document.getElementById('install').hidden = true; })
     .observe(document.getElementById('join-go'), { attributes: true });

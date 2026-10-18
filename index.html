@@ -56,6 +56,7 @@ button:disabled{opacity:.5;cursor:default}
         <button class="ghost" id="copy">Copier le lien d'invitation</button>
       </div>
       <div class="row" style="margin-top:14px">
+        <button id="unmute" class="hidden">🔊 Activer le son</button>
         <button id="mute">Couper mon micro</button>
         <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
       </div>
@@ -109,7 +110,8 @@ button:disabled{opacity:.5;cursor:default}
 <script>
 const $ = s => document.querySelector(s);
 const EMOJIS = ['😂','😱','🔥','💀','👀','😍','🤡','👏'];
-const ICE = [{ urls: 'stun:stun.l.google.com:19302' }]; // + TURN en production (voir doc)
+let ICE = [{ urls: 'stun:stun.l.google.com:19302' }]; // remplacé par /ice (ajoute le relais TURN quand il est configuré)
+fetch('/ice').then(r => r.json()).then(j => { if (j.iceServers) ICE = j.iceServers; }).catch(() => {});
 let ws, me, localStream, muted = false, pttHeld = false;
 const peers = new Map(); // id -> {name, kind, pc, audio, el}
 const log = t => { const l = $('#log'); l.textContent = (new Date().toLocaleTimeString() + '  ' + t + '\n' + l.textContent).slice(0, 4000); };
@@ -125,6 +127,7 @@ $('#go').onclick = async () => {
   const room = ($('#room').value.trim() || randomCode()).toUpperCase();
   try { localStorage.setItem('salon.name', name); } catch {}
   $('#go').disabled = true;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} // iPhone : le son doit être débloqué par un toucher
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   } catch (e) { alert('Micro refusé : tu pourras écouter mais pas parler.'); localStream = null; }
@@ -240,12 +243,15 @@ function makePC(id) {
   pc.onicecandidate = e => e.candidate && send({ t: 'signal', to: id, data: { ice: e.candidate } });
   pc.ontrack = e => {
     const p = peers.get(id); if (!p) return;
-    if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; document.body.append(p.audio); }
+    if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; p.audio.setAttribute('playsinline', ''); document.body.append(p.audio); }
     p.audio.srcObject = e.streams[0] || new MediaStream([e.track]);
-    p.audio.play().catch(() => {});
+    p.audio.play().catch(() => $('#unmute').classList.remove('hidden')); // son bloqué par le téléphone : bouton pour l'activer
     watchLevel(id, p.audio.srcObject);
   };
-  pc.onconnectionstatechange = () => setStatus(id, { connected: 'en ligne', connecting: 'connexion…', failed: 'échec (réseau)', disconnected: 'coupé' }[pc.connectionState] || pc.connectionState);
+  pc.onconnectionstatechange = () => {
+    setStatus(id, { connected: 'en ligne', connecting: 'connexion…', failed: 'pas de son : réseau bloqué', disconnected: 'coupé' }[pc.connectionState] || pc.connectionState);
+    if (pc.connectionState === 'failed') log(`Voix impossible avec ${peers.get(id)?.name || 'un participant'} : réseau trop restrictif (souvent la 4G). Le chat écrit fonctionne.`);
+  };
   peers.get(id).pc = pc;
   return pc;
 }
@@ -268,7 +274,7 @@ const send = o => ws?.readyState === 1 && ws.send(JSON.stringify(o));
 let actx;
 function watchLevel(id, stream) {
   try {
-    actx = actx || new AudioContext();
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const an = actx.createAnalyser(); an.fftSize = 512;
     actx.createMediaStreamSource(stream).connect(an);
     const buf = new Uint8Array(an.fftSize);
@@ -288,6 +294,7 @@ function watchLevel(id, stream) {
 const micOff = () => muted || ($('#ptt').checked && !pttHeld);
 function applyMic() { localStream?.getAudioTracks().forEach(t => t.enabled = !micOff()); $('#mute').textContent = muted ? 'Réactiver mon micro' : 'Couper mon micro'; }
 $('#mute').onclick = () => { muted = !muted; applyMic(); };
+$('#unmute').onclick = () => { try { actx?.resume(); } catch {} peers.forEach(p => p.audio?.play().catch(() => {})); $('#unmute').classList.add('hidden'); };
 $('#ptt').onchange = applyMic;
 addEventListener('keydown', e => { if (e.code === 'Space' && $('#ptt').checked && e.target.tagName !== 'INPUT') { e.preventDefault(); pttHeld = true; applyMic(); } });
 addEventListener('keyup', e => { if (e.code === 'Space') { pttHeld = false; applyMic(); } });

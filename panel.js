@@ -2,7 +2,7 @@
 // Deux connexions au serveur : "salon" (voix, chat, calibration) et "player" (commandes de lecture),
 // ce qui garde le même protocole que la page web du salon (les amis sur téléphone restent compatibles).
 const DEFAULT_SERVER = 'https://salon-coche-private.onrender.com';
-const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+let ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 const EMOJIS = ['😂', '😱', '🔥', '💀', '👀', '😍', '⚽', '👏'];
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -40,6 +40,7 @@ async function join(c) {
   await chrome.storage.local.set({ name });
   $('#err').textContent = '';
   await getMic();
+  try { const j = await (await fetch(server.replace(/\/$/, '') + '/ice')).json(); if (j.iceServers) ICE = j.iceServers; } catch {}
   me = { name }; code = c.toUpperCase();
   connectSalon(); connectPlayer();
 }
@@ -139,7 +140,7 @@ function makePC(id) {
     p.audio.srcObject = e.streams[0] || new MediaStream([e.track]); p.audio.play().catch(() => {});
     watchLevel(id, p.audio.srcObject);
   };
-  pc.onconnectionstatechange = () => { const p = peers.get(id); p?.el?.classList.toggle('on', pc.connectionState === 'connected'); if (p?.el) p.el.dataset.state = pc.connectionState; };
+  pc.onconnectionstatechange = () => { const p = peers.get(id); p?.el?.classList.toggle('on', pc.connectionState === 'connected'); if (p?.el) p.el.dataset.state = pc.connectionState; if (pc.connectionState === 'failed') sys(`Voix impossible avec ${p?.name || 'un participant'} : réseau trop restrictif (souvent la 4G). Le chat fonctionne.`); };
   peers.get(id).pc = pc; return pc;
 }
 async function call(id) { const pc = makePC(id); await pc.setLocalDescription(await pc.createOffer()); sendS({ t: 'signal', to: id, data: { sdp: pc.localDescription } }); }
