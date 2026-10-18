@@ -47,6 +47,8 @@ button:disabled{opacity:.5;cursor:default}
       <button id="go">Entrer dans le salon</button>
       <span class="muted" style="font-size:13px">Le micro sera demandé. Casque recommandé.</span>
     </div>
+    <div id="joinErr" style="color:var(--accent);font-size:13px;margin-top:8px"></div>
+    <div id="inAppWarn" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px">Tu es dans le navigateur d'une appli : le micro risque de ne pas marcher. Ouvre ce lien dans Safari ou Chrome.</div>
   </section>
 
   <section id="in" class="hidden">
@@ -56,10 +58,12 @@ button:disabled{opacity:.5;cursor:default}
         <button class="ghost" id="copy">Copier le lien d'invitation</button>
       </div>
       <div class="row" style="margin-top:14px">
+        <button id="micOn" class="hidden">🎤 Activer mon micro</button>
         <button id="unmute" class="hidden">🔊 Activer le son</button>
         <button id="mute">Couper mon micro</button>
         <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
       </div>
+      <div id="micMsg" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px"></div>
       <div class="peers" id="peers"></div>
       <div class="react" id="react"></div>
     </div>
@@ -117,6 +121,9 @@ const peers = new Map(); // id -> {name, kind, pc, audio, el}
 const log = t => { const l = $('#log'); l.textContent = (new Date().toLocaleTimeString() + '  ' + t + '\n' + l.textContent).slice(0, 4000); };
 
 try { $('#name').value = localStorage.getItem('salon.name') || ''; } catch {}
+const inApp = /FBAN|FBAV|Instagram|Line\/|Snapchat|TikTok|musical_ly|LinkedInApp|WhatsApp/i.test(navigator.userAgent);
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+if (inApp) $('#inAppWarn').classList.remove('hidden');
 const fromPath = location.pathname.match(/^\/s\/([A-Za-z0-9-]+)/);
 if (fromPath) $('#room').value = fromPath[1];
 
@@ -129,8 +136,8 @@ $('#go').onclick = async () => {
   $('#go').disabled = true;
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} // iPhone : le son doit être débloqué par un toucher
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  } catch (e) { alert('Micro refusé : tu pourras écouter mais pas parler.'); localStream = null; }
+    localStream = await getMic();
+  } catch (e) { localStream = null; micError(e); }
   connect(name, room);
 };
 
@@ -145,7 +152,7 @@ function connect(name, room) {
   ws.onclose = () => log('déconnecté du serveur');
   ws.onmessage = async ev => {
     const m = JSON.parse(ev.data);
-    if (m.t === 'error') { alert(m.msg); $('#go').disabled = false; return; }
+    if (m.t === 'error') { $('#joinErr').textContent = m.msg; $('#go').disabled = false; return; }
     if (m.t === 'welcome') {
       me = { id: m.id, name, room: m.room };
       $('#join').classList.add('hidden'); $('#in').classList.remove('hidden');
@@ -263,6 +270,7 @@ async function call(id) {
 async function onSignal(from, data) {
   let p = peers.get(from); if (!p) return;
   if (data.sdp) {
+    if (data.sdp.type === 'offer' && p.pc) { p.pc.close(); p.pc = null; } // l'autre a (ré)activé son micro
     const pc = p.pc || makePC(from);
     await pc.setRemoteDescription(data.sdp);
     if (data.sdp.type === 'offer') { await pc.setLocalDescription(await pc.createAnswer()); send({ t: 'signal', to: from, data: { sdp: pc.localDescription } }); }
@@ -289,6 +297,33 @@ function watchLevel(id, stream) {
     tick();
   } catch {}
 }
+
+
+// ---- Micro : demande, explication claire en cas d'échec, nouvel essai ----
+async function getMic() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error('nomedia'); e.name = 'NoMediaDevices'; throw e; }
+  return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+}
+function micError(e) {
+  let msg;
+  if (e.name === 'NoMediaDevices' || inApp) msg = isIOS ? 'Ce navigateur ne donne pas accès au micro. Ouvre le lien dans Safari : touche « … » ou l\'icône boussole puis « Ouvrir dans Safari ».' : 'Ce navigateur ne donne pas accès au micro. Ouvre le lien dans Chrome.';
+  else if (e.name === 'NotAllowedError') msg = isIOS ? 'Safari a bloqué le micro. Touche « aA » à gauche de l\'adresse > Réglages du site web > Micro > Autoriser, puis « Activer mon micro ».' : 'Le micro a été refusé. Clique sur l\'icône à gauche de l\'adresse, autorise le micro, puis « Activer mon micro ».';
+  else if (e.name === 'NotFoundError') msg = 'Aucun micro détecté sur cet appareil.';
+  else if (e.name === 'NotReadableError') msg = 'Le micro est déjà utilisé par une autre appli (appel, FaceTime…). Ferme-la puis « Activer mon micro ».';
+  else msg = 'Micro indisponible (' + e.name + '). Réessaie avec « Activer mon micro ».';
+  $('#micMsg').textContent = msg; $('#micMsg').classList.remove('hidden');
+  $('#micOn').classList.remove('hidden'); $('#mute').classList.add('hidden');
+  if (me) setStatus(me.id, 'sans micro');
+}
+$('#micOn').onclick = async () => {
+  try { try { actx?.resume(); } catch {} localStream = await getMic(); }
+  catch (e) { micError(e); return; }
+  $('#micMsg').classList.add('hidden'); $('#micOn').classList.add('hidden'); $('#mute').classList.remove('hidden');
+  setStatus(me.id, 'micro actif'); watchLevel(me.id, localStream); applyMic();
+  // On rappelle chaque participant avec le micro (l'autre côté remplace l'ancienne connexion).
+  for (const [id, p] of peers) if (p.kind === 'salon' && id !== me.id) { p.pc?.close(); p.pc = null; await call(id); }
+  log('Micro activé');
+};
 
 // Micro : coupure manuelle ou "appuyer pour parler"
 const micOff = () => muted || ($('#ptt').checked && !pttHeld);
