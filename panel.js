@@ -19,10 +19,10 @@ const peers = new Map(); // id -> {name, kind, pc, audio, el}
   $('#name').value = st.name || '';
   tabId = params.get('tab') ? Number(params.get('tab')) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   for (const em of EMOJIS) { const b = document.createElement('button'); b.textContent = em; b.onclick = () => sendS({ t: 'reaction', emoji: em }); $('#react').append(b); }
-  const { pendingJoin } = await chrome.storage.session.get('pendingJoin');
+  const { pendingJoin } = await chrome.storage.local.get('pendingJoin');
   if (pendingJoin && Date.now() - pendingJoin.at < 30 * 60 * 1000) {
     $('#codeIn').value = pendingJoin.code;
-    await chrome.storage.session.remove('pendingJoin');
+    await chrome.storage.local.remove('pendingJoin');
     if ($('#name').value.trim()) join(pendingJoin.code);
     else { $('#err').textContent = 'Choisis un pseudo puis clique sur Rejoindre.'; $('#name').focus(); }
   }

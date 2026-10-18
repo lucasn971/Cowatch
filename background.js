@@ -1,19 +1,40 @@
-// Clic sur l'icône = ouverture du panneau latéral Salon à côté de la vidéo.
-chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' }).catch(() => {});
-chrome.runtime.onInstalled.addListener(() => {
+// Salon — script d'arrière-plan commun à Chrome, Edge, Brave, Opera et Firefox (ordinateur et Android).
+// Où s'ouvre le panneau selon le navigateur :
+//  - Chrome, Edge, Brave : panneau latéral natif (API sidePanel), à côté de la vidéo ;
+//  - Firefox ordinateur : barre latérale (sidebarAction) ;
+//  - Opera et navigateurs sans panneau : petite fenêtre à part ;
+//  - Firefox Android : nouvel onglet (pas de fenêtre ni de barre latérale sur mobile).
+const B = globalThis.browser;
+const hasSidePanel = !!(chrome.sidePanel && chrome.sidePanel.setPanelBehavior);
+const hasSidebar = !!(B && B.sidebarAction && B.sidebarAction.open);
+
+if (hasSidePanel) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-});
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {}));
+} else {
+  chrome.action.onClicked.addListener(tab => { openPanelFor(tab).catch(() => {}); });
+}
+
+async function openPanelFor(tab) {
+  if (hasSidePanel) { await chrome.sidePanel.open({ tabId: tab.id }); return 'sidepanel'; }
+  if (hasSidebar) { try { await B.sidebarAction.open(); return 'sidebar'; } catch (e) { /* hors geste utilisateur : on passe à la fenêtre */ } }
+  const url = chrome.runtime.getURL(`panel.html?tab=${tab.id}`);
+  if (chrome.windows && chrome.windows.create) {
+    try { await chrome.windows.create({ url, type: 'popup', width: 400, height: 760 }); return 'window'; } catch (e) {}
+  }
+  await chrome.tabs.create({ url, active: true }); // Firefox Android
+  return 'tab';
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  // Lien d'invitation : on mémorise le salon à rejoindre, le panneau le reprendra à son ouverture.
+  // Lien d'invitation : on mémorise le salon à rejoindre (30 min), le panneau le reprendra à son ouverture.
   if (msg.cmd === 'pendingJoin') {
-    chrome.storage.session.set({ pendingJoin: { code: msg.code, at: Date.now() } }).then(() => reply({ ok: true }));
+    chrome.storage.local.set({ pendingJoin: { code: msg.code, at: Date.now() } }).then(() => reply({ ok: true }));
     return true;
   }
-  // Ouverture du panneau depuis un clic dans la page (bulle "Rejoindre le salon").
+  // Ouverture du panneau depuis la bulle « Rejoindre le salon » affichée sur la vidéo.
   if (msg.cmd === 'openPanel' && sender.tab) {
-    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => reply({ ok: true })).catch(e => reply({ ok: false, error: String(e) }));
+    openPanelFor(sender.tab).then(where => reply({ ok: true, where })).catch(e => reply({ ok: false, error: String(e) }));
     return true;
   }
 });

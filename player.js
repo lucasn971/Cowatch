@@ -28,7 +28,7 @@
   chrome.runtime.sendMessage({ cmd: 'hello' }).catch(() => {}); // page (re)chargée : le panneau renvoie l'état du salon
 
   // Invitation en attente : petite bulle qui ouvre le panneau d'un clic.
-  if (window.top === window) chrome.storage.session.get('pendingJoin').then(({ pendingJoin }) => {
+  if (window.top === window) chrome.storage.local.get('pendingJoin').then(({ pendingJoin }) => {
     if (!pendingJoin || Date.now() - pendingJoin.at > 30 * 60 * 1000) return;
     const b = document.createElement('button');
     b.textContent = `Rejoindre le salon ${pendingJoin.code}`;

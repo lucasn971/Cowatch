@@ -12,8 +12,8 @@ const PORT = process.env.PORT || 8080;
 const STRUCTURED = fs.existsSync(path.join(__dirname, '..', 'web', 'index.html'));
 const WEB_DIR = STRUCTURED ? path.join(__dirname, '..', 'web') : __dirname;
 // En mode "vrac", on ne sert QUE les fichiers publics (pas le code du serveur ni de l'extension).
-const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm']);
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json' };
+const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png']);
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 // ---------- HTTP statique ----------
 const server = http.createServer((req, res) => {
