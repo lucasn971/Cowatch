@@ -9,6 +9,7 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, me = null, code = null, tabId = null, wsS = null, wsP = null;
 let localStream = null, muted = false, pttHeld = false, mode = 'vod', calibId = null, myTop = false, lastWelcome = null;
+let diagParts = [];
 const peers = new Map(); // id -> {name, kind, pc, audio, el}
 
 // ---------- Démarrage ----------
@@ -127,6 +128,7 @@ function connectPlayer() {
 function fromTab(m) {
   if (m.cmd === 'sync') sendP({ t: 'sync', action: m.action, time: m.time, playing: m.playing, rate: m.rate });
   if (m.cmd === 'hello' && lastWelcome) toTab(lastWelcome); // l'onglet a rechargé la page : on lui redonne le salon
+  if (m.cmd === 'diag') diagParts.push(m.data);
   if (m.cmd === 'video') { $('#playerStatus').textContent = m.found ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!m.found); }
 }
 
@@ -227,3 +229,21 @@ function showCalib(m) {
 
 // ---------- Quitter ----------
 $('#leave').onclick = () => { code = null; clearInterval(pingS); clearInterval(pingP); wsS?.close(); wsP?.close(); peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); location.reload(); };
+
+// ---------- Diagnostic du lecteur (lecture seule, rien n'est envoyé au serveur) ----------
+
+document.getElementById('diag').onclick = async () => {
+  const box = document.getElementById('diagOut'), btn = document.getElementById('diag');
+  diagParts = []; btn.disabled = true; btn.textContent = 'Analyse… (3 s)';
+  toTab({ t: 'diag' });
+  await new Promise(r => setTimeout(r, 3500));
+  let page = ''; try { const tab = await chrome.tabs.get(tabId); page = new URL(tab.url).hostname; } catch {}
+  const report = { cowatch: chrome.runtime.getManifest().version, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
+    salon: typeof code !== 'undefined' ? code || null : null, serverOffsetMs: typeof lastWelcome !== 'undefined' && lastWelcome ? lastWelcome.offset : null,
+    at: new Date().toISOString(), frames: diagParts };
+  const txt = 'DIAGNOSTIC COWATCH\n' + JSON.stringify(report, null, 1);
+  box.value = txt; box.classList.remove('hidden');
+  let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch { box.select(); try { copied = document.execCommand('copy'); } catch {} }
+  btn.disabled = false; btn.textContent = copied ? 'Copié ✓ — colle-le à Claude' : 'Sélectionne le texte et copie-le';
+  setTimeout(() => { btn.textContent = 'Diagnostic'; }, 6000);
+};

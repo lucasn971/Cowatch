@@ -6,8 +6,14 @@
   const isHost = () => me && me === host;
   const quiet = (ms = 700) => { ignoreUntil = Date.now() + ms; };
 
+  // Cherche aussi dans les « shadow DOM » ouverts (certains lecteurs y cachent leur <video>).
+  function allVideos(root = document, out = [], depth = 0) {
+    root.querySelectorAll('video').forEach(v => out.push(v));
+    if (depth < 6) root.querySelectorAll('*').forEach(el => { if (el.shadowRoot) allVideos(el.shadowRoot, out, depth + 1); });
+    return out;
+  }
   function findVideo() {
-    const vids = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 || v.src || v.currentSrc);
+    const vids = allVideos().filter(v => v.readyState > 0 || v.src || v.currentSrc);
     vids.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
     return vids[0] || null;
   }
@@ -74,7 +80,31 @@
     clearTimeout(bannerEl._t); bannerEl._t = setTimeout(() => bannerEl.remove(), 3500);
   }
 
+
+  // Diagnostic (lecture seule) : décrit le lecteur pour savoir si un calage 100 % automatique est possible.
+  function rangeList(r) { const a = []; try { for (let i = 0; i < r.length; i++) a.push([+r.start(i).toFixed(2), +r.end(i).toFixed(2)]); } catch {} return a; }
+  function snap(v) {
+    const sk = rangeList(v.seekable), bf = rangeList(v.buffered);
+    let startDate = null; try { const d = v.getStartDate && v.getStartDate(); if (d && !isNaN(d.getTime())) startDate = d.toISOString(); } catch {}
+    return { t: Date.now(), currentTime: +v.currentTime.toFixed(3), duration: v.duration === Infinity ? 'Infinity' : +(+v.duration).toFixed(2),
+      paused: v.paused, readyState: v.readyState, rate: v.playbackRate, size: v.videoWidth + 'x' + v.videoHeight,
+      src: (v.currentSrc || v.src || '').split(':')[0], seekable: sk, buffered: bf,
+      edgeGap: sk.length ? +(sk[sk.length - 1][1] - v.currentTime).toFixed(2) : null, startDate };
+  }
+  async function diagnose() {
+    const all = allVideos(), light = all.length - document.querySelectorAll('video').length;
+    const res = performance.getEntriesByType('resource').map(e => e.name).filter(n => /\.m3u8|\.mpd|manifest|\.ism/i.test(n))
+      .slice(-6).map(n => { try { const u = new URL(n); return u.hostname + u.pathname.slice(-60); } catch { return n.slice(0, 80); } });
+    const scripts = [...document.scripts].map(s => s.src).filter(Boolean).map(s => s.split('/').pop().split('?')[0]).filter(n => /rx|shaka|hls|dash|bitmovin|player|video/i.test(n)).slice(0, 8);
+    const out = { frame: location.hostname + location.pathname.slice(0, 40), top: window.top === window, videos: all.length, inShadow: light, picked: video ? 'oui' : 'non', manifests: res, scripts };
+    if (video) {
+      const a = snap(video); await new Promise(r => setTimeout(r, 2000)); const b = snap(video);
+      out.sampleA = a; out.sampleB = b; out.advance = +((b.currentTime - a.currentTime) / ((b.t - a.t) / 1000)).toFixed(3);
+    }
+    return out;
+  }
   chrome.runtime.onMessage.addListener(m => {
+    if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
     if (m.t === 'welcome') { mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
