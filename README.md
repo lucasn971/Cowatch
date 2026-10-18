@@ -1,11 +1,11 @@
-# Salon — regarder ensemble à distance (v0.3)
+# Cowatch — regarder ensemble à distance (v0.3)
 
 **Modèle « à la Teleparty »** : chacun va sur la plateforme (Canal+, Paramount+, TF1+…) avec son propre compte,
-ouvre l'extension Salon, et retrouve dans un **panneau latéral** : voix, chat écrit, réactions, lecture synchronisée
+ouvre l'extension Cowatch, et retrouve dans un **panneau latéral** : voix, chat écrit, réactions, lecture synchronisée
 (séries) ou alignement anti-spoil (matchs en direct). Aucune vidéo ne passe par nos serveurs.
 
 ## Parcours utilisateur
-1. Lucas ouvre son programme sur la plateforme, clique sur l'icône Salon → panneau latéral → « Créer un salon ».
+1. Lucas ouvre son programme sur la plateforme, clique sur l'icône Cowatch → panneau latéral → « Créer un salon ».
 2. « Copier l'invitation » → lien `https://<serveur>/j/CODE?u=<page de la plateforme>`.
 3. L'ami ouvre le lien : si l'extension est là, bouton « Rejoindre le salon » → il arrive sur la même page de la plateforme,
    une bulle « Rejoindre le salon CODE » ouvre le panneau, il est connecté automatiquement.

@@ -1,6 +1,6 @@
 {
-  "name": "Salon — regarder ensemble",
-  "short_name": "Salon",
+  "name": "Cowatch — regarder ensemble",
+  "short_name": "Cowatch",
   "description": "Voix, chat et réactions pour regarder un match ou une série ensemble à distance.",
   "start_url": "/",
   "scope": "/",

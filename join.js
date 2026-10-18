@@ -7,6 +7,6 @@
   btn.hidden = false;
   btn.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ cmd: 'pendingJoin', code });
-    if (target) location.href = target; else btn.textContent = 'Salon prêt : ouvre ta plateforme puis clique sur l\'icône Salon';
+    if (target) location.href = target; else btn.textContent = 'Salon prêt : ouvre ta plateforme puis clique sur l\'icône Cowatch';
   });
 })();

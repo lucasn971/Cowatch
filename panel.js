@@ -1,4 +1,4 @@
-// Panneau latéral Salon : salon vocal + chat + réactions + synchro du lecteur de l'onglet.
+// Panneau latéral Cowatch : salon vocal + chat + réactions + synchro du lecteur de l'onglet.
 // Deux connexions au serveur : "salon" (voix, chat, calibration) et "player" (commandes de lecture),
 // ce qui garde le même protocole que la page web du salon (les amis sur téléphone restent compatibles).
 const DEFAULT_SERVER = 'https://salon-coche-private.onrender.com';

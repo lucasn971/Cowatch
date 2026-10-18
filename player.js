@@ -33,7 +33,7 @@
     const b = document.createElement('button');
     b.textContent = `Rejoindre le salon ${pendingJoin.code}`;
     b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#ff5a3c;color:#fff;border:0;border-radius:999px;padding:12px 18px;font:600 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
-    b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Salon en haut à droite'; };
+    b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Cowatch en haut à droite'; };
     document.documentElement.append(b);
   }).catch(() => {});
 
@@ -84,6 +84,6 @@
     else if (m.t === 'chat') banner(`${m.name} : ${m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}`);
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor);
-    else if (m.t === 'disconnected') { me = null; banner('Salon déconnecté'); }
+    else if (m.t === 'disconnected') { me = null; banner('Cowatch déconnecté'); }
   });
 })();

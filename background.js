@@ -1,4 +1,4 @@
-// Salon — script d'arrière-plan commun à Chrome, Edge, Brave, Opera et Firefox (ordinateur et Android).
+// Cowatch — script d'arrière-plan commun à Chrome, Edge, Brave, Opera et Firefox (ordinateur et Android).
 // Où s'ouvre le panneau selon le navigateur :
 //  - Chrome, Edge, Brave : panneau latéral natif (API sidePanel), à côté de la vidéo ;
 //  - Firefox ordinateur : barre latérale (sidebarAction) ;

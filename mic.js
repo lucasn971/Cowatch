@@ -2,7 +2,7 @@
 navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
   s.getTracks().forEach(t => t.stop());
   document.getElementById('t').textContent = 'Micro autorisé ✓';
-  document.getElementById('d').textContent = 'Tu peux fermer cet onglet et revenir au panneau Salon.';
+  document.getElementById('d').textContent = 'Tu peux fermer cet onglet et revenir au panneau Cowatch.';
   chrome.runtime.sendMessage({ cmd: 'micGranted' }).catch(() => {});
   setTimeout(() => window.close(), 1500);
 }).catch(() => {
