@@ -14,6 +14,7 @@
   function attach(v) {
     if (!v || v === video) return;
     video = v;
+    chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {});
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {
       if (Date.now() < ignoreUntil || !me || mode !== 'vod') return; // en direct, chacun garde son flux
       emit(ev === 'seeked' ? 'seek' : ev);
@@ -21,9 +22,20 @@
   }
   function emit(action) {
     if (!video) return;
-    chrome.runtime.sendMessage({ cmd: 'sync', action, time: video.currentTime, playing: !video.paused, rate: video.playbackRate }).catch(() => {});
+    chrome.runtime.sendMessage({ cmd: 'sync', action, time: video.currentTime, playing: !video.paused, rate: video.playbackRate }).catch(() => {}); // vers le panneau
   }
   setInterval(() => attach(findVideo()), 1000);
+  chrome.runtime.sendMessage({ cmd: 'hello' }).catch(() => {}); // page (re)chargée : le panneau renvoie l'état du salon
+
+  // Invitation en attente : petite bulle qui ouvre le panneau d'un clic.
+  if (window.top === window) chrome.storage.session.get('pendingJoin').then(({ pendingJoin }) => {
+    if (!pendingJoin || Date.now() - pendingJoin.at > 30 * 60 * 1000) return;
+    const b = document.createElement('button');
+    b.textContent = `Rejoindre le salon ${pendingJoin.code}`;
+    b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#ff5a3c;color:#fff;border:0;border-radius:999px;padding:12px 18px;font:600 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
+    b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Salon en haut à droite'; };
+    document.documentElement.append(b);
+  }).catch(() => {});
 
   // Le pilote publie son état toutes les 3 s : les autres corrigent leur dérive.
   function startStateLoop() {
@@ -63,6 +75,7 @@
   }
 
   chrome.runtime.onMessage.addListener(m => {
+    if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
     if (m.t === 'welcome') { mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');

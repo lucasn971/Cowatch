@@ -1,8 +1,26 @@
-# Salon — prototype de co-watching (v0.2)
+# Salon — regarder ensemble à distance (v0.3)
 
-Regarder à plusieurs à distance : **voix + réactions**, et selon la séance :
-- **Match en direct** (1er test : Ligue des champions sur Canal+, entre proches) → *alignement sur le plus lent* ;
-- **Série / film** (phase suivante : Frenchie Shore sur Paramount+) → *lecture partagée* (play / pause / avance).
+**Modèle « à la Teleparty »** : chacun va sur la plateforme (Canal+, Paramount+, TF1+…) avec son propre compte,
+ouvre l'extension Salon, et retrouve dans un **panneau latéral** : voix, chat écrit, réactions, lecture synchronisée
+(séries) ou alignement anti-spoil (matchs en direct). Aucune vidéo ne passe par nos serveurs.
+
+## Parcours utilisateur
+1. Lucas ouvre son programme sur la plateforme, clique sur l'icône Salon → panneau latéral → « Créer un salon ».
+2. « Copier l'invitation » → lien `https://<serveur>/j/CODE?u=<page de la plateforme>`.
+3. L'ami ouvre le lien : si l'extension est là, bouton « Rejoindre le salon » → il arrive sur la même page de la plateforme,
+   une bulle « Rejoindre le salon CODE » ouvre le panneau, il est connecté automatiquement.
+4. Sans extension (téléphone, TV) : « Rejoindre sans extension » → salon web `/s/CODE` (voix + chat, alignement manuel).
+
+## Extension v0.3 (dossier `extension/`, Manifest V3)
+- `panel.html/js` : panneau latéral (API `chrome.sidePanel`) — salon, voix WebRTC, chat, réactions, mode série/match, calibration TOP.
+- `player.js` : sur les pages des plateformes, repère la vidéo, applique play/pause/avance/alignement, affiche messages et bulle d'invitation.
+- `join.js` : sur la page d'invitation `/j/CODE`, remplace « installer » par « rejoindre ».
+- `mic.html/js` : autorisation du micro en un clic (le panneau latéral ne peut pas afficher la demande lui-même).
+- Sites autorisés : canalplus.com, paramountplus.com, tf1.fr, primevideo.com, youtube.com (pratique pour tester gratuitement), le serveur.
+
+Tests : `node test/e2e-v3.js` (18/18 : invitation, voix, chat, réactions, synchro, alignement) et `node test/e2e-web.js` (salon web, 8/8).
+
+---
 
 ## Pourquoi un mode « match »
 En direct, personne ne voit l'image au même moment : Canal+ annonce ~10 s de retard en « streaming temps réel »

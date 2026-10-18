@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invitation Salon</title>
+<style>
+:root{--bg:#0f0e13;--panel:#17151d;--line:#2a2731;--text:#f2eff6;--muted:#9b95a8;--accent:#ff5a3c}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:24px 16px}
+main{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.02em}.logo span{color:var(--accent)}
+h1{font-size:22px;margin:14px 0 6px;letter-spacing:-.01em}
+.muted{color:var(--muted)}
+.code{font:700 22px ui-monospace,monospace;letter-spacing:3px}
+.btn{display:block;width:100%;text-align:center;border:0;border-radius:12px;padding:13px;background:var(--accent);color:#fff;font:600 15px inherit;cursor:pointer;text-decoration:none;margin-top:16px}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+ol{padding-left:20px;margin:10px 0 0}
+li{margin:6px 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">Salon<span>.</span></div>
+  <h1>Tu es invité à regarder ensemble</h1>
+  <div class="muted">Salon <span class="code" id="code"></span><span id="where"></span></div>
+  <div id="join-data"></div>
+  <button class="btn" id="join-go" hidden>Rejoindre le salon</button>
+  <div id="install">
+    <p class="muted" style="margin-top:16px">Pour regarder avec la voix, le chat et la lecture synchronisée, il faut l'extension Salon sur Chrome (ordinateur) :</p>
+    <ol class="muted">
+      <li>Installe l'extension Salon (lien envoyé par la personne qui t'invite).</li>
+      <li>Recharge cette page, puis clique sur « Rejoindre le salon ».</li>
+      <li>Connecte-toi à ton propre compte sur la plateforme.</li>
+    </ol>
+  </div>
+  <a class="btn ghost" id="noext">Rejoindre sans extension (voix et chat seulement)</a>
+</main>
+<script>
+  const code = (location.pathname.split('/')[2] || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  const ALLOWED = ['canalplus.com', 'paramountplus.com', 'tf1.fr', 'primevideo.com', 'youtube.com', 'localhost'];
+  let target = '';
+  try {
+    const u = new URL(new URLSearchParams(location.search).get('u') || '');
+    if (['https:', 'http:'].includes(u.protocol) && ALLOWED.some(h => u.hostname === h || u.hostname.endsWith('.' + h))) target = u.toString();
+  } catch {}
+  document.getElementById('code').textContent = code;
+  if (target) {
+    const host = new URL(target).hostname.replace(/^www\./, '');
+    const names = { 'canalplus.com': 'Canal+', 'paramountplus.com': 'Paramount+', 'tf1.fr': 'TF1+', 'primevideo.com': 'Prime Video', 'youtube.com': 'YouTube' };
+    const k = Object.keys(names).find(h => host === h || host.endsWith('.' + h));
+    document.getElementById('where').textContent = k ? ` · sur ${names[k]}` : '';
+  }
+  const box = document.getElementById('join-data'); box.dataset.code = code; box.dataset.target = target;
+  document.getElementById('noext').href = '/s/' + code;
+  // L'extension (join.js) affiche le bouton "Rejoindre" ; on masque alors les étapes d'installation.
+  new MutationObserver(() => { if (!document.getElementById('join-go').hidden) document.getElementById('install').hidden = true; })
+    .observe(document.getElementById('join-go'), { attributes: true });
+</script>
+</body>
+</html>
