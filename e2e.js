@@ -23,7 +23,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(audioOk, 'B reçoit la piste audio de A');
   await A.click('#react button:first-child'); await sleep(400);
   ok(await B.$('.fl') !== null, 'réaction de A affichée chez B');
-  await A.screenshot({ path: path.join(__dirname, 'salon.png') });
+  await A.fill('#chat-in', 'Allez le PSG !'); await A.press('#chat-in', 'Enter'); await sleep(400);
+  ok((await B.$eval('#chat', e => e.textContent)).includes('Lucas Allez le PSG !'), 'chat écrit : message de A reçu par B');
+  ok((await A.$eval('#chat', e => e.textContent)).includes('Toi Allez le PSG !'), 'chat écrit : A voit son propre message');
+  await B.fill('#chat-in', '<b>pas de HTML</b>'); await B.click('#chat-send'); await sleep(400);
+  ok(await A.$('#chat b') === null, 'chat écrit : le HTML n\'est pas interprété');
+  const C = await (await b.newContext()).newPage(); await C.goto(BASE + '/s/SHORE-42'); await C.fill('#name', 'Kenzo'); await C.click('#go'); await C.waitForSelector('#in:not(.hidden)'); await sleep(800);
+  ok((await C.$eval('#chat', e => e.textContent)).includes('Allez le PSG !'), 'chat écrit : historique reçu par un arrivant');
+  await C.close();
+  await A.screenshot({ path: path.join(__dirname, 'salon.png'), fullPage: true });
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
 
   // ---- Partie 2 : synchro lecteur via l'extension ----

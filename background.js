@@ -23,7 +23,7 @@ function join(tabId, server, room, name) {
         resolve({ ok: true });
       } else if (m.t === 'error') resolve({ ok: false, error: m.msg });
       else if (m.t === 'host') { s.host = m.id; toTab(tabId, m); }
-      else if (['sync', 'state-request', 'reaction', 'mode', 'align'].includes(m.t)) toTab(tabId, m);
+      else if (['sync', 'state-request', 'reaction', 'mode', 'align', 'chat'].includes(m.t)) toTab(tabId, m);
     };
   });
 }

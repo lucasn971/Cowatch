@@ -63,6 +63,14 @@ button:disabled{opacity:.5;cursor:default}
       <div class="react" id="react"></div>
     </div>
     <div class="card">
+      <strong>Chat</strong>
+      <div id="chat" style="height:220px;overflow:auto;margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#121117;font-size:14px"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="chat-in" maxlength="500" placeholder="Écris un message… (Entrée pour envoyer)" style="flex:1">
+        <button id="chat-send">Envoyer</button>
+      </div>
+    </div>
+    <div class="card">
       <div class="row" style="justify-content:space-between">
         <strong>Type de séance</strong>
         <div class="row">
@@ -154,6 +162,8 @@ function connect(name, room) {
     if (m.t === 'welcome' || m.t === 'mode') { setMode(m.mode); if (m.t === 'mode') log(`${m.by} passe en mode ${m.mode === 'live' ? 'match en direct' : 'série / film'}`); }
     if (m.t === 'calib-start') { calibId = m.id; myTop = false; $('#calib-live').classList.remove('hidden'); $('#top').disabled = false; $('#top').textContent = 'TOP !'; $('#calib-q').textContent = `Appuie sur TOP au moment où tu VOIS : ${m.label}`; $('#calib-res').innerHTML = ''; $('#align').classList.add('hidden'); $('#align-msg').textContent = ''; }
     if (m.t === 'calib-result') showCalib(m);
+    if (m.t === 'chat') addChat(m);
+    if (m.t === 'chat-history') m.items.forEach(addChat);
     if (m.t === 'align' && m.name === me.name) {
       const hasPlayer = [...peers.values()].some(p => p.kind === 'player' && p.name === me.name);
       $('#align-msg').textContent = hasPlayer ? `Ton lecteur se met en pause ${m.pauseFor} s pour s'aligner.` : `Tu as ${m.pauseFor} s d'avance : mets pause ${Math.round(m.pauseFor)} s sur ta box ou ton appli, puis relance.`;
@@ -161,6 +171,19 @@ function connect(name, room) {
     if (m.t === 'aligned') { log(`${m.by} a appliqué l'alignement`); if (!$('#align-msg').textContent) $('#align-msg').textContent = 'Tu es le plus en retard : rien à faire, les autres se calent sur toi.'; }
   };
 }
+
+// ---- Chat écrit ----
+function addChat(m) {
+  const box = $('#chat'), d = document.createElement('div'); d.style.padding = '3px 0';
+  const who = document.createElement('strong'); who.textContent = (m.name === me?.name ? 'Toi' : m.name) + ' ';
+  const when = document.createElement('span'); when.className = 'muted'; when.style.fontSize = '11px';
+  when.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '  ';
+  const txt = document.createElement('span'); txt.textContent = m.text; // textContent : aucun HTML injecté
+  d.append(when, who, txt); box.append(d); box.scrollTop = box.scrollHeight;
+}
+function sendChat() { const v = $('#chat-in').value.trim(); if (!v) return; send({ t: 'chat', text: v }); $('#chat-in').value = ''; }
+$('#chat-send').onclick = sendChat;
+$('#chat-in').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
 // ---- Mode match en direct : calibration TOP + alignement ----
 let mode = 'vod', calibId = null, myTop = false;

@@ -106,7 +106,8 @@ const rooms = new Map();
 // Métadonnées par salon : mode 'vod' (série : lecture partagée) ou 'live' (match : alignement sur le plus lent).
 const meta = new Map(); // room -> {mode, calib:{id,label,tops:Map(name->serverTime)}}
 const stats = { roomsCreated: 0, joins: 0, reactions: 0, syncEvents: 0, calibrations: 0, alignments: 0 };
-const metaOf = room => { if (!meta.has(room)) meta.set(room, { mode: 'vod', calib: null }); return meta.get(room); };
+const metaOf = room => { if (!meta.has(room)) meta.set(room, { mode: 'vod', calib: null, chat: [] }); return meta.get(room); };
+const CHAT_HISTORY = 50; // derniers messages renvoyés à qui arrive en cours de route (en mémoire seulement, rien n'est stocké)
 
 // Calibration "TOP" : chacun appuie quand il VOIT le même moment (coup de sifflet, changement du score à l'écran).
 // Celui qui appuie le plus tard est le plus en retard = la référence. Les autres ont "advance" secondes d'avance.
@@ -155,6 +156,7 @@ function handle(conn) {
       const h = hostOf(room);
       conn.send({ t: 'welcome', id: me.id, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: metaOf(room).mode });
       const cr = calibResult(room); if (cr && kind === 'salon') conn.send(cr);
+      if (kind === 'salon' && metaOf(room).chat.length) conn.send({ t: 'chat-history', items: metaOf(room).chat });
       broadcast(room, { t: 'peer-joined', peer: pub(me) }, me.id);
       if (kind === 'player' && h && h.id !== me.id) h.conn.send({ t: 'state-request' }); // le nouveau se cale sur le pilote
       return;
@@ -174,6 +176,15 @@ function handle(conn) {
         stats.syncEvents++;
         broadcast(me.room, { t: 'sync', from: me.id, name: me.name, action: m.action, time: +m.time || 0, playing: !!m.playing, rate: +m.rate || 1, sentAt: Date.now() }, me.id);
         break;
+      case 'chat': { // chat écrit : relayé à tout le salon (salons + extensions pour l'affichage sur le lecteur)
+        const text = String(m.text || '').trim().slice(0, 500);
+        if (!text) break;
+        const msg = { t: 'chat', name: me.name, text, at: Date.now() };
+        const h = metaOf(me.room).chat; h.push(msg); if (h.length > CHAT_HISTORY) h.shift();
+        stats.chats = (stats.chats || 0) + 1;
+        broadcast(me.room, msg);
+        break;
+      }
       case 'mode': { // bascule série <-> match, pour tout le salon
         const mode = m.mode === 'live' ? 'live' : 'vod';
         metaOf(me.room).mode = mode;

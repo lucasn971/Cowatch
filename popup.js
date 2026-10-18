@@ -2,7 +2,7 @@ const $ = s => document.querySelector(s);
 (async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const saved = await chrome.storage.local.get(['server', 'room', 'name']);
-  $('#server').value = saved.server || 'http://localhost:8080';
+  $('#server').value = saved.server || 'https://salon-coche-private.onrender.com';
   $('#room').value = saved.room || '';
   $('#name').value = saved.name || '';
   const show = s => $('#st').textContent = s;
