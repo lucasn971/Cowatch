@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Salon — synchro (prototype)",
+  "version": "0.2.0",
+  "description": "Prototype : synchronise play/pause/avance d'une vidéo entre les membres d'un salon.",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Salon" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "all_frames": true,
+    "run_at": "document_idle"
+  }]
+}

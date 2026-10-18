@@ -1,0 +1,9 @@
+{
+  "name": "salon-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serveur de salons : signalisation WebRTC, relais de synchro, réactions. Zéro dépendance.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

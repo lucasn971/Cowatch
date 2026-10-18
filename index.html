@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Salon — prototype</title>
+<style>
+:root{--bg:#0f0e13;--panel:#1a1820;--line:#2c2934;--text:#f2eff6;--muted:#9b95a8;--accent:#ff5a3c;--ok:#3ccf8e;--speak:#ffd23c}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+main{max-width:720px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:22px;margin:0 0 4px} .muted{color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#121117;color:var(--text);font-size:15px}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:var(--accent);color:#fff;font-weight:600}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.peers{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
+.peer{border:2px solid var(--line);border-radius:12px;padding:12px;text-align:center;transition:border-color .1s}
+.peer.speaking{border-color:var(--speak)} .peer .n{font-weight:600} .peer .s{font-size:12px;color:var(--muted)}
+.react{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.react button{background:#121117;border:1px solid var(--line);font-size:22px;padding:8px 12px}
+#floaters{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.fl{position:absolute;bottom:-40px;font-size:34px;animation:up 2.6s ease-out forwards}
+.fl small{display:block;font-size:11px;color:var(--muted);text-align:center}
+@keyframes up{to{transform:translateY(-80vh);opacity:0}}
+.code{font:700 26px ui-monospace,monospace;letter-spacing:3px}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;background:#121117;border:1px solid var(--line);font-size:12px}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+#log{font:12px ui-monospace,monospace;color:var(--muted);max-height:120px;overflow:auto;margin-top:10px;white-space:pre-wrap}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Salon de visionnage</h1>
+  <div class="muted">Prototype v0.2 — voix + réactions + synchro série ou alignement match en direct</div>
+
+  <section id="join" class="card">
+    <label for="name">Ton pseudo</label>
+    <input id="name" maxlength="24" placeholder="ex. Lucas">
+    <label for="room">Code du salon (laisser vide pour en créer un)</label>
+    <input id="room" maxlength="24" placeholder="ex. SHORE-42">
+    <div class="row" style="margin-top:14px">
+      <button id="go">Entrer dans le salon</button>
+      <span class="muted" style="font-size:13px">Le micro sera demandé. Casque recommandé.</span>
+    </div>
+  </section>
+
+  <section id="in" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><div class="muted" style="font-size:13px">Code du salon</div><div class="code" id="code"></div></div>
+        <button class="ghost" id="copy">Copier le lien d'invitation</button>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button id="mute">Couper mon micro</button>
+        <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
+      </div>
+      <div class="peers" id="peers"></div>
+      <div class="react" id="react"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <strong>Type de séance</strong>
+        <div class="row">
+          <button class="ghost" id="mode-vod">Série / film</button>
+          <button class="ghost" id="mode-live">Match en direct</button>
+        </div>
+      </div>
+      <div class="muted" style="font-size:13px;margin-top:6px" id="mode-help"></div>
+    </div>
+    <div class="card hidden" id="calib">
+      <strong>Aligner tout le monde sur le plus lent</strong>
+      <div class="muted" style="font-size:13px;margin-top:6px">Box, appli, navigateur : le direct n'arrive pas au même moment chez tout le monde (jusqu'à 30 s d'écart). Sans alignement, celui qui est en avance spoile les buts à la voix.</div>
+      <label for="calib-label">Moment de référence (bien visible à l'écran)</label>
+      <div class="row"><input id="calib-label" style="flex:1" value="le score change à l'écran (ou le prochain coup de sifflet)"><button id="calib-start">Lancer</button></div>
+      <div id="calib-live" class="hidden" style="margin-top:14px;text-align:center">
+        <div class="muted" id="calib-q"></div>
+        <button id="top" style="font-size:28px;padding:22px 48px;margin-top:10px">TOP !</button>
+      </div>
+      <div id="calib-res" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="align" class="hidden">Appliquer l'alignement</button>
+        <span class="muted" style="font-size:13px" id="align-msg"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <strong>Lecture synchronisée</strong>
+        <span class="pill" id="syncpill">aucun lecteur connecté</span>
+      </div>
+      <div class="muted" style="font-size:13px;margin-top:6px">Ouvre le programme dans un autre onglet (Canal+, Paramount+…), clique sur l'extension et entre le même code + le même pseudo. En mode série, play / pause / avance sont partagés ; en mode match, l'extension applique l'alignement automatiquement.</div>
+      <div id="log"></div>
+    </div>
+  </section>
+</main>
+<div id="floaters"></div>
+<script>
+const $ = s => document.querySelector(s);
+const EMOJIS = ['😂','😱','🔥','💀','👀','😍','🤡','👏'];
+const ICE = [{ urls: 'stun:stun.l.google.com:19302' }]; // + TURN en production (voir doc)
+let ws, me, localStream, muted = false, pttHeld = false;
+const peers = new Map(); // id -> {name, kind, pc, audio, el}
+const log = t => { const l = $('#log'); l.textContent = (new Date().toLocaleTimeString() + '  ' + t + '\n' + l.textContent).slice(0, 4000); };
+
+try { $('#name').value = localStorage.getItem('salon.name') || ''; } catch {}
+const fromPath = location.pathname.match(/^\/s\/([A-Za-z0-9-]+)/);
+if (fromPath) $('#room').value = fromPath[1];
+
+function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
+
+$('#go').onclick = async () => {
+  const name = $('#name').value.trim() || 'Invité';
+  const room = ($('#room').value.trim() || randomCode()).toUpperCase();
+  try { localStorage.setItem('salon.name', name); } catch {}
+  $('#go').disabled = true;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { alert('Micro refusé : tu pourras écouter mais pas parler.'); localStream = null; }
+  connect(name, room);
+};
+
+function connect(name, room) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ t: 'join', room, name, kind: 'salon' }));
+    // Garde le serveur éveillé (l'hébergement gratuit s'endort après 15 min sans message entrant).
+    setInterval(() => ws.readyState === 1 && ws.send('{"t":"ping"}'), 30000);
+  };
+  ws.onclose = () => log('déconnecté du serveur');
+  ws.onmessage = async ev => {
+    const m = JSON.parse(ev.data);
+    if (m.t === 'error') { alert(m.msg); $('#go').disabled = false; return; }
+    if (m.t === 'welcome') {
+      me = { id: m.id, name, room: m.room };
+      $('#join').classList.add('hidden'); $('#in').classList.remove('hidden');
+      $('#code').textContent = m.room;
+      history.replaceState(null, '', '/s/' + m.room);
+      addPeer({ id: me.id, name: name + ' (toi)', kind: 'salon' }, true);
+      if (localStream) watchLevel(me.id, localStream);
+      // Le nouvel arrivant appelle chaque participant déjà présent.
+      for (const p of m.peers) { addPeer(p); if (p.kind === 'salon') await call(p.id); }
+      updatePlayers();
+    }
+    if (m.t === 'peer-joined') { addPeer(m.peer); log(`${m.peer.name} ${m.peer.kind === 'player' ? 'a connecté son lecteur' : 'est arrivé'}`); updatePlayers(); }
+    if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.el?.remove(); p.audio?.remove(); peers.delete(m.id); log(`${p.name} est parti`); } updatePlayers(); }
+    if (m.t === 'signal') await onSignal(m.from, m.data);
+    if (m.t === 'reaction') floatEmoji(m.emoji, m.name);
+    if (m.t === 'sync' && mode === 'vod') { log(`${m.name} : ${m.action} à ${fmt(m.time)}`); }
+    if (m.t === 'welcome' || m.t === 'mode') { setMode(m.mode); if (m.t === 'mode') log(`${m.by} passe en mode ${m.mode === 'live' ? 'match en direct' : 'série / film'}`); }
+    if (m.t === 'calib-start') { calibId = m.id; myTop = false; $('#calib-live').classList.remove('hidden'); $('#top').disabled = false; $('#top').textContent = 'TOP !'; $('#calib-q').textContent = `Appuie sur TOP au moment où tu VOIS : ${m.label}`; $('#calib-res').innerHTML = ''; $('#align').classList.add('hidden'); $('#align-msg').textContent = ''; }
+    if (m.t === 'calib-result') showCalib(m);
+    if (m.t === 'align' && m.name === me.name) {
+      const hasPlayer = [...peers.values()].some(p => p.kind === 'player' && p.name === me.name);
+      $('#align-msg').textContent = hasPlayer ? `Ton lecteur se met en pause ${m.pauseFor} s pour s'aligner.` : `Tu as ${m.pauseFor} s d'avance : mets pause ${Math.round(m.pauseFor)} s sur ta box ou ton appli, puis relance.`;
+    }
+    if (m.t === 'aligned') { log(`${m.by} a appliqué l'alignement`); if (!$('#align-msg').textContent) $('#align-msg').textContent = 'Tu es le plus en retard : rien à faire, les autres se calent sur toi.'; }
+  };
+}
+
+// ---- Mode match en direct : calibration TOP + alignement ----
+let mode = 'vod', calibId = null, myTop = false;
+function setMode(md) {
+  mode = md === 'live' ? 'live' : 'vod';
+  $('#mode-vod').style.borderColor = mode === 'vod' ? 'var(--accent)' : '';
+  $('#mode-live').style.borderColor = mode === 'live' ? 'var(--accent)' : '';
+  $('#calib').classList.toggle('hidden', mode !== 'live');
+  $('#mode-help').textContent = mode === 'live'
+    ? 'Match en direct : chacun garde son flux (Canal+ box, appli ou navigateur). On s\'aligne une fois au début, puis après une coupure.'
+    : 'Série / film : play, pause et avance sont partagés entre les lecteurs connectés par l\'extension.';
+}
+$('#mode-vod').onclick = () => send({ t: 'mode', mode: 'vod' });
+$('#mode-live').onclick = () => send({ t: 'mode', mode: 'live' });
+$('#calib-start').onclick = () => send({ t: 'calib-start', label: $('#calib-label').value.trim() });
+$('#top').onclick = () => { if (myTop) return; myTop = true; send({ t: 'top', id: calibId }); $('#top').disabled = true; $('#top').textContent = 'TOP enregistré ✓'; };
+$('#align').onclick = () => send({ t: 'align' });
+function showCalib(m) {
+  const box = $('#calib-res'); box.innerHTML = '';
+  for (const it of m.items) {
+    const d = document.createElement('div'); d.className = 'row'; d.style.justifyContent = 'space-between'; d.style.padding = '4px 0';
+    const n = document.createElement('span'); n.textContent = it.name;
+    const v = document.createElement('span'); v.className = 'pill' + (it.advance < 0.3 ? ' ok' : '');
+    v.textContent = it.advance < 0.3 ? 'référence (le plus lent)' : `${it.advance.toFixed(1)} s d'avance`;
+    d.append(n, v); box.append(d);
+  }
+  const salons = [...peers.values()].filter(p => p.kind === 'salon').length;
+  $('#align').classList.toggle('hidden', m.items.length < 2);
+  if (m.items.length < salons) $('#align-msg').textContent = `${m.items.length}/${salons} TOP reçus…`; else $('#align-msg').textContent = '';
+}
+
+function addPeer(p, self = false) {
+  if (peers.has(p.id)) return;
+  const entry = { ...p };
+  if (p.kind === 'salon') {
+    const el = document.createElement('div'); el.className = 'peer'; el.id = 'p-' + p.id;
+    el.innerHTML = `<div class="n"></div><div class="s">${self ? (localStream ? 'micro actif' : 'sans micro') : 'connexion…'}</div>`;
+    el.querySelector('.n').textContent = p.name;
+    $('#peers').append(el); entry.el = el;
+  }
+  peers.set(p.id, entry);
+}
+function setStatus(id, txt) { const e = peers.get(id)?.el; if (e) e.querySelector('.s').textContent = txt; }
+function updatePlayers() {
+  const n = [...peers.values()].filter(p => p.kind === 'player').length;
+  const pill = $('#syncpill'); pill.textContent = n ? `${n} lecteur${n > 1 ? 's' : ''} synchronisé${n > 1 ? 's' : ''}` : 'aucun lecteur connecté';
+  pill.classList.toggle('ok', n > 0);
+}
+
+function makePC(id) {
+  const pc = new RTCPeerConnection({ iceServers: ICE });
+  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  else pc.addTransceiver('audio', { direction: 'recvonly' });
+  pc.onicecandidate = e => e.candidate && send({ t: 'signal', to: id, data: { ice: e.candidate } });
+  pc.ontrack = e => {
+    const p = peers.get(id); if (!p) return;
+    if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; document.body.append(p.audio); }
+    p.audio.srcObject = e.streams[0] || new MediaStream([e.track]);
+    p.audio.play().catch(() => {});
+    watchLevel(id, p.audio.srcObject);
+  };
+  pc.onconnectionstatechange = () => setStatus(id, { connected: 'en ligne', connecting: 'connexion…', failed: 'échec (réseau)', disconnected: 'coupé' }[pc.connectionState] || pc.connectionState);
+  peers.get(id).pc = pc;
+  return pc;
+}
+async function call(id) {
+  const pc = makePC(id);
+  await pc.setLocalDescription(await pc.createOffer());
+  send({ t: 'signal', to: id, data: { sdp: pc.localDescription } });
+}
+async function onSignal(from, data) {
+  let p = peers.get(from); if (!p) return;
+  if (data.sdp) {
+    const pc = p.pc || makePC(from);
+    await pc.setRemoteDescription(data.sdp);
+    if (data.sdp.type === 'offer') { await pc.setLocalDescription(await pc.createAnswer()); send({ t: 'signal', to: from, data: { sdp: pc.localDescription } }); }
+  } else if (data.ice && p.pc) { try { await p.pc.addIceCandidate(data.ice); } catch {} }
+}
+const send = o => ws?.readyState === 1 && ws.send(JSON.stringify(o));
+
+// Indicateur "parle" via l'analyse du niveau audio
+let actx;
+function watchLevel(id, stream) {
+  try {
+    actx = actx || new AudioContext();
+    const an = actx.createAnalyser(); an.fftSize = 512;
+    actx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    const tick = () => {
+      const p = peers.get(id); if (!p) return;
+      an.getByteTimeDomainData(buf);
+      let s = 0; for (const v of buf) s += (v - 128) ** 2;
+      const speaking = Math.sqrt(s / buf.length) > 6 && !(id === me.id && micOff());
+      p.el?.classList.toggle('speaking', speaking);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  } catch {}
+}
+
+// Micro : coupure manuelle ou "appuyer pour parler"
+const micOff = () => muted || ($('#ptt').checked && !pttHeld);
+function applyMic() { localStream?.getAudioTracks().forEach(t => t.enabled = !micOff()); $('#mute').textContent = muted ? 'Réactiver mon micro' : 'Couper mon micro'; }
+$('#mute').onclick = () => { muted = !muted; applyMic(); };
+$('#ptt').onchange = applyMic;
+addEventListener('keydown', e => { if (e.code === 'Space' && $('#ptt').checked && e.target.tagName !== 'INPUT') { e.preventDefault(); pttHeld = true; applyMic(); } });
+addEventListener('keyup', e => { if (e.code === 'Space') { pttHeld = false; applyMic(); } });
+
+// Réactions
+for (const em of EMOJIS) { const b = document.createElement('button'); b.textContent = em; b.onclick = () => send({ t: 'reaction', emoji: em }); $('#react').append(b); }
+function floatEmoji(em, who) {
+  const d = document.createElement('div'); d.className = 'fl'; d.style.left = (10 + Math.random() * 80) + '%';
+  d.textContent = em; const s = document.createElement('small'); s.textContent = who; d.append(s);
+  $('#floaters').append(d); setTimeout(() => d.remove(), 2700);
+}
+$('#copy').onclick = async () => { const url = location.origin + '/s/' + me.room; try { await navigator.clipboard.writeText(url); $('#copy').textContent = 'Lien copié ✓'; } catch { prompt('Lien à partager :', url); } };
+const fmt = t => { t = Math.max(0, Math.floor(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+</script>
+</body>
+</html>
