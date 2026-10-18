@@ -179,11 +179,14 @@ function handle(conn) {
       const kind = m.kind === 'player' ? 'player' : 'salon';
       if (kind === 'salon' && [...r.values()].filter(c => c.kind === 'salon').length >= ROOM_MAX)
         return conn.send({ t: 'error', msg: `salon plein (${ROOM_MAX} max en prototype)` });
-      me = { conn, id: crypto.randomBytes(4).toString('hex'), name: String(m.name || 'Invité').slice(0, 24), kind, room };
+      let name = String(m.name || 'Invité').trim().slice(0, 24) || 'Invité';
+      const taken = new Set([...r.values()].filter(c => c.kind === kind).map(c => c.name));
+      if (taken.has(name)) { let i = 2; while (taken.has(`${name} ${i}`)) i++; name = `${name} ${i}`; }
+      me = { conn, id: crypto.randomBytes(4).toString('hex'), name, kind, room };
       const others = peersOf(room).map(pub);
       r.set(me.id, me); stats.joins++;
       const h = hostOf(room);
-      conn.send({ t: 'welcome', id: me.id, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: metaOf(room).mode });
+      conn.send({ t: 'welcome', id: me.id, name: me.name, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: metaOf(room).mode });
       const cr = calibResult(room); if (cr && kind === 'salon') conn.send(cr);
       if (kind === 'salon' && metaOf(room).chat.length) conn.send({ t: 'chat-history', items: metaOf(room).chat });
       broadcast(room, { t: 'peer-joined', peer: pub(me) }, me.id);

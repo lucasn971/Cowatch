@@ -31,21 +31,27 @@ button:disabled{opacity:.5;cursor:default}
 .pill.ok{color:var(--ok);border-color:var(--ok)}
 #log{font:12px ui-monospace,monospace;color:var(--muted);max-height:120px;overflow:auto;margin-top:10px;white-space:pre-wrap}
 .hidden{display:none}
+@media (pointer:coarse) and (max-width:820px){.desk-only{display:none!important}}
 </style>
 </head>
 <body>
 <main>
   <h1>Salon de visionnage</h1>
-  <div class="muted">Prototype v0.2 — voix + réactions + synchro série ou alignement match en direct</div>
+  <div class="muted">Voix, chat et réactions pour regarder ensemble — avec l'extension Salon sur ordinateur, la lecture se synchronise aussi</div>
 
+  <div id="netBanner" class="hidden" role="status" style="margin-top:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--speak);color:var(--speak);font-size:14px"></div>
   <section id="join" class="card">
     <label for="name">Ton pseudo</label>
     <input id="name" maxlength="24" placeholder="ex. Lucas">
     <label for="room">Code du salon (laisser vide pour en créer un)</label>
     <input id="room" maxlength="24" placeholder="ex. SHORE-42">
     <div class="row" style="margin-top:14px">
+      <button class="ghost" id="micTest">🎤 Tester mon micro</button>
+      <div id="meterBox" class="hidden" style="flex:1;min-width:120px;height:10px;border-radius:99px;background:#121117;border:1px solid var(--line);overflow:hidden"><div id="meter" style="height:100%;width:0;background:var(--ok);transition:width .08s"></div></div>
+    </div>
+    <div id="micTestMsg" class="muted" style="font-size:13px;margin-top:6px">Parle : la barre doit bouger. Casque recommandé.</div>
+    <div class="row" style="margin-top:14px">
       <button id="go">Entrer dans le salon</button>
-      <span class="muted" style="font-size:13px">Le micro sera demandé. Casque recommandé.</span>
     </div>
     <div id="joinErr" style="color:var(--accent);font-size:13px;margin-top:8px"></div>
     <div id="inAppWarn" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px">Tu es dans le navigateur d'une appli : le micro risque de ne pas marcher. Ouvre ce lien dans Safari ou Chrome.</div>
@@ -61,7 +67,7 @@ button:disabled{opacity:.5;cursor:default}
         <button id="micOn" class="hidden">🎤 Activer mon micro</button>
         <button id="unmute" class="hidden">🔊 Activer le son</button>
         <button id="mute">Couper mon micro</button>
-        <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
+        <label class="row desk-only" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
       </div>
       <div id="micMsg" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px"></div>
       <div class="peers" id="peers"></div>
@@ -100,7 +106,7 @@ button:disabled{opacity:.5;cursor:default}
         <span class="muted" style="font-size:13px" id="align-msg"></span>
       </div>
     </div>
-    <div class="card">
+    <div class="card desk-only">
       <div class="row" style="justify-content:space-between">
         <strong>Lecture synchronisée</strong>
         <span class="pill" id="syncpill">aucun lecteur connecté</span>
@@ -136,24 +142,48 @@ $('#go').onclick = async () => {
   $('#go').disabled = true;
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {} // iPhone : le son doit être débloqué par un toucher
   try {
-    localStream = await getMic();
+    localStream = localStream || await getMic();
   } catch (e) { localStream = null; micError(e); }
   connect(name, room);
 };
+$('#micTest').onclick = async () => {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {}
+  try { localStream = localStream || await getMic(); }
+  catch (e) { micError(e); $('#micTestMsg').textContent = $('#micMsg').textContent; $('#micTestMsg').style.color = 'var(--accent)'; return; }
+  $('#meterBox').classList.remove('hidden'); $('#micTestMsg').textContent = 'Micro OK si la barre bouge quand tu parles.'; $('#micTestMsg').style.color = '';
+  const an = actx.createAnalyser(); an.fftSize = 512; actx.createMediaStreamSource(localStream).connect(an); const buf = new Uint8Array(512);
+  const tick = () => { if ($('#join').classList.contains('hidden')) return; an.getByteTimeDomainData(buf); let s = 0; for (const v of buf) s += (v - 128) ** 2; $('#meter').style.width = Math.min(100, Math.sqrt(s / 512) * 4) + '%'; requestAnimationFrame(tick); };
+  tick();
+};
 
+// Connexion avec reconnexion automatique (serveur qui redémarre ou s'endort, réseau mobile qui coupe).
+let retries = 0, pingTimer = null, reconnecting = false;
 function connect(name, room) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
   ws.onopen = () => {
-    ws.send(JSON.stringify({ t: 'join', room, name, kind: 'salon' }));
+    ws.send(JSON.stringify({ t: 'join', room: me?.room || room, name, kind: 'salon' }));
     // Garde le serveur éveillé (l'hébergement gratuit s'endort après 15 min sans message entrant).
-    setInterval(() => ws.readyState === 1 && ws.send('{"t":"ping"}'), 30000);
+    clearInterval(pingTimer); pingTimer = setInterval(() => ws.readyState === 1 && ws.send('{"t":"ping"}'), 30000);
   };
-  ws.onclose = () => log('déconnecté du serveur');
+  ws.onclose = () => {
+    clearInterval(pingTimer);
+    const delay = Math.min(1000 * 2 ** retries, 10000); retries++;
+    reconnecting = !!me;
+    $('#netBanner').textContent = me ? `Connexion perdue. Reconnexion dans ${Math.round(delay / 1000)} s…` : 'Le serveur se réveille, patiente quelques secondes…';
+    $('#netBanner').classList.remove('hidden');
+    setTimeout(() => connect(name, room), delay);
+  };
   ws.onmessage = async ev => {
     const m = JSON.parse(ev.data);
     if (m.t === 'error') { $('#joinErr').textContent = m.msg; $('#go').disabled = false; return; }
     if (m.t === 'welcome') {
+      retries = 0; $('#netBanner').classList.add('hidden');
+      if (reconnecting) { // on repart d'une liste propre : les autres nous voient comme un nouvel arrivant
+        peers.forEach(p => { p.pc?.close(); p.el?.remove(); p.audio?.remove(); }); peers.clear();
+        $('#chat').innerHTML = ''; log('Reconnecté'); reconnecting = false;
+      }
+      name = m.name || name;
       me = { id: m.id, name, room: m.room };
       $('#join').classList.add('hidden'); $('#in').classList.remove('hidden');
       $('#code').textContent = m.room;

@@ -42,7 +42,7 @@ async function join(c) {
   await getMic();
   try { const j = await (await fetch(server.replace(/\/$/, '') + '/ice')).json(); if (j.iceServers) ICE = j.iceServers; } catch {}
   me = { name }; code = c.toUpperCase();
-  connectSalon(); connectPlayer();
+  connectSalon(); // le lecteur se connecte après l'accueil, avec le pseudo définitif
 }
 
 async function getMic() {
@@ -72,16 +72,26 @@ const sendP = o => wsP?.readyState === 1 && wsP.send(JSON.stringify(o));
 const toTab = m => { if (tabId != null) chrome.tabs.sendMessage(tabId, m).catch(() => {}); };
 
 // ---------- Connexion "salon" : voix, chat, réactions, calibration ----------
+let retryS = 0, retryP = 0, pingS = null, pingP = null, reconnectingS = false;
 function connectSalon() {
   wsS = new WebSocket(wsUrl());
-  wsS.onopen = () => { sendS({ t: 'join', room: code, name: me.name, kind: 'salon' }); setInterval(() => sendS({ t: 'ping' }), 30000); };
-  wsS.onerror = () => { $('#err').textContent = 'Serveur injoignable. Réessaie dans une minute (il se réveille).'; };
-  wsS.onclose = () => { if (code) sys('Connexion perdue avec le serveur'); };
+  wsS.onopen = () => { sendS({ t: 'join', room: code, name: me.name, kind: 'salon' }); clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000); };
+  wsS.onerror = () => { if (!me.id) $('#err').textContent = 'Le serveur se réveille, nouvel essai automatique…'; };
+  wsS.onclose = () => {
+    clearInterval(pingS); if (!code) return;
+    const d = Math.min(1000 * 2 ** retryS++, 10000); reconnectingS = !!me.id;
+    if (me.id) sys(`Connexion perdue, reconnexion dans ${Math.round(d / 1000)} s…`);
+    setTimeout(() => { if (code) connectSalon(); }, d);
+  };
   wsS.onmessage = async ev => {
     const m = JSON.parse(ev.data);
     if (m.t === 'error') { $('#err').textContent = m.msg; return; }
     if (m.t === 'welcome') {
-      me.id = m.id; code = m.room;
+      retryS = 0; $('#err').textContent = '';
+      if (reconnectingS) { peers.forEach(p => { p.pc?.close(); p.el?.remove(); p.audio?.remove(); }); peers.clear(); $('#peers').innerHTML = ''; reconnectingS = false; }
+      const first = !me.id;
+      me.id = m.id; me.name = m.name || me.name; code = m.room;
+      if (first) connectPlayer();
       $('#home').classList.add('hidden'); $('#room').classList.remove('hidden'); $('#code').textContent = code;
       addPeer({ id: me.id, name: me.name + ' (toi)', kind: 'salon' }, true);
       if (localStream) watchLevel(me.id, localStream);
@@ -105,10 +115,11 @@ function connectSalon() {
 // ---------- Connexion "player" : relais des commandes de lecture vers l'onglet ----------
 function connectPlayer() {
   wsP = new WebSocket(wsUrl());
-  wsP.onopen = () => { sendP({ t: 'join', room: code, name: me.name, kind: 'player' }); setInterval(() => sendP({ t: 'ping' }), 20000); };
+  wsP.onopen = () => { sendP({ t: 'join', room: code, name: me.name, kind: 'player' }); clearInterval(pingP); pingP = setInterval(() => sendP({ t: 'ping' }), 20000); };
+  wsP.onclose = () => { clearInterval(pingP); if (!code) return; const d = Math.min(1000 * 2 ** retryP++, 10000); setTimeout(() => { if (code) connectPlayer(); }, d); };
   wsP.onmessage = ev => {
     const m = JSON.parse(ev.data);
-    if (m.t === 'welcome') { lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode }; toTab(lastWelcome); }
+    if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode }; toTab(lastWelcome); }
     else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
     else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction'].includes(m.t)) toTab(m);
   };
@@ -215,4 +226,4 @@ function showCalib(m) {
 }
 
 // ---------- Quitter ----------
-$('#leave').onclick = () => { code = null; wsS?.close(); wsP?.close(); peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); location.reload(); };
+$('#leave').onclick = () => { code = null; clearInterval(pingS); clearInterval(pingP); wsS?.close(); wsP?.close(); peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); location.reload(); };
