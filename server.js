@@ -134,7 +134,7 @@ server.on('upgrade', (req, socket) => {
 const rooms = new Map();
 // Métadonnées par salon : mode 'vod' (série : lecture partagée) ou 'live' (match : alignement sur le plus lent).
 const meta = new Map(); // room -> {mode, calib:{id,label,tops:Map(name->serverTime)}}
-const stats = { roomsCreated: 0, joins: 0, reactions: 0, syncEvents: 0, calibrations: 0, alignments: 0 };
+const stats = { roomsCreated: 0, joins: 0, reactions: 0, syncEvents: 0, calibrations: 0, alignments: 0, autoSyncs: 0 };
 const metaOf = room => { if (!meta.has(room)) meta.set(room, { mode: 'vod', calib: null, chat: [] }); return meta.get(room); };
 const CHAT_HISTORY = 50; // derniers messages renvoyés à qui arrive en cours de route (en mémoire seulement, rien n'est stocké)
 
@@ -157,6 +157,38 @@ const cleanAvatar = a => (typeof a === 'string' && a.length <= 24000 && AVATAR_R
 function broadcast(room, msg, exceptId, kind) {
   for (const c of peersOf(room)) if (c.id !== exceptId && (!kind || c.kind === kind)) c.conn.send(msg);
 }
+// ---------- Calage automatique du direct ----------
+// Chaque lecteur envoie sa position (= heure réelle de l'image affichée). L = heure serveur − position = son retard.
+// Le plus en retard sert de référence ; chacun des autres se met en pause de son avance. À chaque arrivée, et si ça dérive.
+function autoSync(room) {
+  const md = metaOf(room); if (md.mode !== 'live') return;
+  const now = Date.now();
+  if (md.syncUntil && now < md.syncUntil) return; // des lecteurs sont en train de se caler
+  const reason = md.syncAgain ? 'arrival' : 'drift', who = md.syncWho || null;
+  const ps = peersOf(room).filter(c => c.kind === 'player' && c.clock && now - c.clock.at < 8000);
+  if (ps.length < 2) return;
+  const Ls = ps.map(c => c.clock.L).sort((a, b) => a - b), med = Ls[Ls.length >> 1];
+  const ok = ps.filter(c => Math.abs(c.clock.L - med) < 120); // au-delà : pas le même programme
+  if (ok.length < 2) return;
+  const Lmax = Math.max(...ok.map(c => c.clock.L));
+  const items = ok.map(c => ({ name: c.name, ahead: +(Lmax - c.clock.L).toFixed(2) }));
+  const spread = Math.max(...items.map(i => i.ahead));
+  if (reason === 'drift' && spread < 1.5) return;
+  md.syncAgain = null; md.syncWho = null;
+  if (reason === 'drift') { // garde-fou : si le lecteur revient tout seul au direct, on ne boucle pas
+    md.drifts = (md.drifts || []).filter(t => now - t < 120000); md.drifts.push(now);
+    if (md.drifts.length > 4) { if (!md.stuckSent) { md.stuckSent = true; broadcast(room, { t: 'autosync-stuck' }, null, 'salon'); } return; }
+  }
+  let maxPause = 0;
+  for (const it of items) if (it.ahead > 0.6) {
+    maxPause = Math.max(maxPause, it.ahead);
+    for (const c of peersOf(room)) if (c.name === it.name) c.conn.send({ t: 'align', pauseFor: it.ahead, name: it.name, auto: true });
+  }
+  md.syncUntil = now + maxPause * 1000 + 4000;
+  stats.autoSyncs++;
+  broadcast(room, { t: 'autosync', reason, who, items, spread: +spread.toFixed(2) }, null, 'salon');
+}
+setInterval(() => { for (const room of rooms.keys()) autoSync(room); }, 3000).unref?.();
 // Le "pilote" de lecture = le premier lecteur arrivé dans le salon.
 function hostOf(room) { return peersOf(room).find(c => c.kind === 'player'); }
 
@@ -195,10 +227,19 @@ function handle(conn) {
       if (kind === 'salon' && metaOf(room).chat.length) conn.send({ t: 'chat-history', items: metaOf(room).chat });
       broadcast(room, { t: 'peer-joined', peer: pub(me) }, me.id);
       if (kind === 'player' && h && h.id !== me.id) h.conn.send({ t: 'state-request' }); // le nouveau se cale sur le pilote
+      if (kind === 'player') { me.needSync = true; me.joinedAt = Date.now(); } // en direct : recalage du salon dès sa 1re position
       return;
     }
     if (!me) return;
     switch (m.t) {
+      case 'clock': { // position du lecteur en direct (heure réelle de l'image) => calage automatique
+        if (me.kind !== 'player') return;
+        const pos = Number(m.pos);
+        if (!(pos > 1e8) || m.paused) { me.clock = null; return; }
+        me.clock = { L: Date.now() / 1000 - pos, at: Date.now() };
+        if (me.needSync) { me.needSync = false; const md = metaOf(me.room); md.syncAgain = 'arrival'; md.syncWho = me.name; autoSync(me.room); }
+        return;
+      }
       case 'avatar': { // changement de photo en cours de salon
         if (me.kind !== 'salon') return;
         const av = cleanAvatar(m.avatar); if (av) me.avatar = av; else delete me.avatar;
@@ -229,7 +270,8 @@ function handle(conn) {
       }
       case 'mode': { // bascule série <-> match, pour tout le salon
         const mode = m.mode === 'live' ? 'live' : 'vod';
-        metaOf(me.room).mode = mode;
+        const md0 = metaOf(me.room); if (md0.mode !== mode && mode === 'live') { md0.syncAgain = 'arrival'; md0.syncWho = me.name; }
+        md0.mode = mode;
         broadcast(me.room, { t: 'mode', mode, by: me.name });
         break;
       }

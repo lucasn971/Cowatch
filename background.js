@@ -4,9 +4,12 @@
 //  - Firefox ordinateur : barre latérale (sidebarAction) ;
 //  - Opera et navigateurs sans panneau : petite fenêtre à part ;
 //  - Firefox Android : nouvel onglet (pas de fenêtre ni de barre latérale sur mobile).
+// Le « moteur » (voix, connexions) tourne dans un document caché (offscreen) quand le navigateur le permet :
+// on peut alors fermer le panneau (plein écran) sans couper la voix.
 const B = globalThis.browser;
 const hasSidePanel = !!(chrome.sidePanel && chrome.sidePanel.setPanelBehavior);
 const hasSidebar = !!(B && B.sidebarAction && B.sidebarAction.open);
+const hasOffscreen = !!(chrome.offscreen && chrome.offscreen.createDocument);
 
 if (hasSidePanel) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -26,6 +29,33 @@ async function openPanelFor(tab) {
   return 'tab';
 }
 
+let creating = null;
+async function ensureEngine() {
+  if (!hasOffscreen) return false;
+  if (chrome.runtime.getContexts) {
+    const ctx = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (ctx.length) return true;
+  }
+  creating = creating || chrome.offscreen.createDocument({ url: 'engine.html', reasons: ['USER_MEDIA', 'WEB_RTC'], justification: 'Salon vocal Cowatch : la voix continue quand le panneau est fermé (plein écran).' })
+    .catch(e => { if (!String(e).includes('single offscreen')) throw e; }).finally(() => { creating = null; });
+  await creating; return true;
+}
+
+// Plein écran Cowatch : la fenêtre passe en plein écran, le lecteur occupe tout l'écran, le panneau se range.
+async function immersive(tabId, on) {
+  const tab = await chrome.tabs.get(tabId);
+  if (on) {
+    const win = await chrome.windows.get(tab.windowId);
+    await chrome.storage.session?.set({ ['win' + tab.windowId]: win.state }).catch(() => {});
+    if (win.state !== 'fullscreen') await chrome.windows.update(tab.windowId, { state: 'fullscreen' }).catch(() => {});
+    await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  } else {
+    const k = 'win' + tab.windowId; const st = (await chrome.storage.session?.get(k).catch(() => ({})))?.[k];
+    await chrome.windows.update(tab.windowId, { state: st && st !== 'fullscreen' ? st : 'normal' }).catch(() => {});
+  }
+  await chrome.tabs.sendMessage(tabId, { t: 'immersive', on }).catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   // Lien d'invitation : on mémorise le salon à rejoindre (30 min), le panneau le reprendra à son ouverture.
   if (msg.cmd === 'pendingJoin') {
@@ -37,7 +67,18 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     openPanelFor(sender.tab).then(where => reply({ ok: true, where })).catch(e => reply({ ok: false, error: String(e) }));
     return true;
   }
+  if (msg.to !== 'bg') return;
+  if (msg.cmd === 'ensureEngine') { ensureEngine().then(ok => reply({ ok })).catch(e => reply({ ok: false, error: String(e) })); return true; }
+  if (msg.cmd === 'relay') { chrome.tabs.sendMessage(msg.tabId, msg.m).catch(() => {}); return; }
+  if (msg.cmd === 'engineIdle') { chrome.offscreen?.closeDocument?.().catch(() => {}); return; }
+  if (msg.cmd === 'immersive') { immersive(msg.tabId, true).then(() => reply({ ok: true })).catch(e => reply({ ok: false, error: String(e) })); return true; }
+  if (msg.cmd === 'exitImmersive' && sender.tab) {
+    // Clic ou touche Échap dans la page : geste utilisateur => on peut rouvrir le panneau.
+    if (hasSidePanel) chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
+    immersive(sender.tab.id, false).then(() => reply({ ok: true })).catch(() => reply({ ok: false }));
+    return true;
+  }
 });
 
-// Raccourci clavier (Alt+Maj+M) : couper / réactiver le micro, même vidéo en plein écran.
-chrome.commands?.onCommand.addListener(cmd => { if (cmd === 'toggle-mic') chrome.runtime.sendMessage({ cmd: 'toggleMic' }).catch(() => {}); });
+// Raccourci clavier (Alt+Maj+M) : couper / réactiver le micro, même en plein écran.
+chrome.commands?.onCommand.addListener(cmd => { if (cmd === 'toggle-mic') chrome.runtime.sendMessage({ to: 'engine', cmd: 'mute', toast: true }).catch(() => {}); });

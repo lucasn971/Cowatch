@@ -50,7 +50,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (let i = 0; i < 40 && !inFs; i++) { inFs = await B.v.evaluate(() => !!document.fullscreenElement?.querySelector('#cowatch-faces')); if (!inFs) await sleep(250); }
   ok(fs && inFs, 'en plein écran, les visages restent visibles (calque déplacé dans le plein écran)');
   // Raccourci micro : Kilian coupe son micro → pastille « Micro coupé »
-  await (await sw(cB)).evaluate(() => chrome.runtime.sendMessage({ cmd: 'toggleMic' }));
+  await (await sw(cB)).evaluate(() => chrome.runtime.sendMessage({ to: 'engine', cmd: 'mute', toast: true }));
   await sleep(600);
   ok(await B.v.evaluate(() => !!document.querySelector('[data-muted]')), 'raccourci Alt+Maj+M : pastille « Micro coupé » visible sur la vidéo');
   ok((await B.p.textContent('#mute')).includes('Réactiver'), 'le panneau reflète le micro coupé');

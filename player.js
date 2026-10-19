@@ -33,8 +33,15 @@
   // Direct ou replay ? (durée infinie ou gigantesque = direct, comme sur Canal+)
   let lastKind = null;
   const isLive = v => v.dataset.cowatchLive === '1' || !isFinite(v.duration) || v.duration > 1e6;
+  // Calage automatique du direct : la position du lecteur Canal+ correspond à l'heure réelle de l'image
+  // (secondes depuis 2015). On l'envoie toutes les 2 s ; le serveur compare les participants et met en pause ceux en avance.
+  let clockTick = 0;
   setInterval(() => {
     attach(findVideo());
+    if (me && video && mode === 'live' && lastKind && ++clockTick % 2 === 0) {
+      const pos = video.currentTime + (Number(video.dataset.cowatchEpoch) || 0); // cowatchEpoch : uniquement pour les tests
+      chrome.runtime.sendMessage({ cmd: 'clock', pos, paused: video.paused || Date.now() < ignoreUntil }).catch(() => {});
+    }
     if (video && video.readyState > 0) { const k = isLive(video); if (k !== lastKind) { lastKind = k; chrome.runtime.sendMessage({ cmd: 'kind', live: k }).catch(() => {}); } }
   }, 1000);
   chrome.runtime.sendMessage({ cmd: 'hello' }).catch(() => {}); // page (re)chargée : le panneau renvoie l'état du salon
@@ -69,13 +76,13 @@
 
   // Alignement en direct : on se met en pause le temps de son avance, puis on relance.
   // Fonctionne si le lecteur autorise la pause du direct (Canal+ : "contrôle du direct", à vérifier sur chaque chaîne).
-  function align(sec) {
+  function align(sec, auto) {
     if (!video || !(sec > 0)) return;
     clearTimeout(alignTimer);
     quiet(sec * 1000 + 1500);
     video.pause();
-    banner(`Alignement : pause ${sec.toFixed(1)} s`);
-    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Aligné ✓'); } catch { banner('Clique sur ▶ pour reprendre'); } }, sec * 1000);
+    banner(auto ? `Calage avec le salon… (${sec.toFixed(1)} s)` : `Alignement : pause ${sec.toFixed(1)} s`);
+    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); } }, sec * 1000);
   }
 
   let bannerEl;
@@ -180,7 +187,51 @@
     setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
   }
   document.addEventListener('fullscreenchange', () => { if (faceBox) faceLayer(); if (chatBox) chatLayer(); if (bannerEl?.isConnected) layerParent().append(bannerEl); });
+
+  // ---------- Plein écran Cowatch : la vidéo occupe toute la fenêtre (passée en plein écran par l'extension) ----------
+  let immersed = null, exitBtn = null, exitTimer = null;
+  function playerBox(v) {
+    // Le plus grand conteneur qui a la même taille que la vidéo = le lecteur avec ses commandes.
+    const r = v.getBoundingClientRect(); let box = v, el = v.parentElement;
+    while (el && el !== document.body) { const q = el.getBoundingClientRect(); if (Math.abs(q.width - r.width) < 4 && Math.abs(q.height - r.height) < 4) box = el; else break; el = el.parentElement; }
+    return box;
+  }
+  function setImmersive(on) {
+    if (window.top !== window) return;
+    if (on && !immersed && video) {
+      const box = playerBox(video);
+      immersed = { box, style: box.getAttribute('style'), vstyle: video.getAttribute('style') };
+      box.style.cssText += ';position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;background:#000!important;margin:0!important;transform:none!important';
+      if (box !== video) video.style.cssText += ';width:100%!important;height:100%!important;object-fit:contain!important';
+      document.documentElement.style.overflow = 'hidden';
+      document.addEventListener('mousemove', showExit, true);
+      // Si un parent bloque le plein cadre (transform…), on agrandit la vidéo elle-même.
+      setTimeout(() => { if (!immersed) return; const r = video.getBoundingClientRect(); if (r.width < innerWidth * 0.9 && r.height < innerHeight * 0.9) video.style.cssText += ';position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:2147483640!important;background:#000!important'; }, 300);
+    } else if (!on && immersed) {
+      const { box, style, vstyle } = immersed; immersed = null;
+      style == null ? box.removeAttribute('style') : box.setAttribute('style', style);
+      if (box !== video) vstyle == null ? video.removeAttribute('style') : video.setAttribute('style', vstyle);
+      else if (vstyle != null) video.setAttribute('style', vstyle);
+      document.documentElement.style.overflow = '';
+      document.removeEventListener('mousemove', showExit, true); exitBtn?.remove();
+    }
+    if (faceBox) faceLayer(); if (chatBox) chatLayer();
+  }
+  // Petit bouton discret pour ressortir (et rouvrir le panneau), visible quand on bouge la souris.
+  function showExit() {
+    if (!immersed) return;
+    if (!exitBtn) {
+      exitBtn = document.createElement('button'); exitBtn.id = 'cowatch-exit'; exitBtn.textContent = '✕ Quitter le plein écran';
+      exitBtn.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:rgba(15,14,19,.6);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:7px 13px;font:600 12px system-ui;cursor:pointer;backdrop-filter:blur(6px)';
+      exitBtn.onclick = exitImmersive;
+    }
+    if (!exitBtn.isConnected) layerParent().append(exitBtn);
+    exitBtn.style.opacity = '1'; clearTimeout(exitTimer); exitTimer = setTimeout(() => { if (exitBtn) exitBtn.style.opacity = '0'; }, 2500);
+  }
+  function exitImmersive() { setImmersive(false); chrome.runtime.sendMessage({ cmd: 'exitImmersive' }).catch(() => {}); }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && immersed && !document.fullscreenElement) { e.stopPropagation(); exitImmersive(); } }, true);
   chrome.runtime.onMessage.addListener(m => {
+    if (m.t === 'immersive') { setImmersive(!!m.on); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); renderMuted(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }
@@ -193,7 +244,7 @@
     else if (m.t === 'reaction') showChat(m.name, m.emoji, true);
     else if (m.t === 'chat') showChat(m.name, m.text);
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
-    else if (m.t === 'align') align(m.pauseFor);
+    else if (m.t === 'align') align(m.pauseFor, m.auto);
     else if (m.t === 'disconnected') { me = null; banner('Cowatch déconnecté'); }
   });
 })();

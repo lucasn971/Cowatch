@@ -55,7 +55,7 @@ section{padding:14px}
 .me-photo .avatar{width:44px;height:44px;font-size:17px}
 .livetag{font-size:12px;color:var(--muted)}
 .livetag b{color:var(--accent)}
-.hint{font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:8px 10px}
+.fullbtn{width:100%;padding:11px;font-size:15px}
 #diag{background:none;border:0;color:var(--muted);font-weight:400;font-size:11px;padding:0;text-decoration:underline}
 kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 4px}
 </style>
@@ -94,15 +94,18 @@ kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:
       <button id="mute" class="ghost small">Couper le micro</button>
       <button id="micFix" class="small hidden">Autoriser le micro</button>
     </div>
+    <button id="full" class="fullbtn">⛶ Plein écran</button>
     <div class="react" id="react"></div>
-    <div class="hint">Mets la vidéo en plein écran : les messages s'affichent en bas à droite, et la photo de celui qui parle en haut à gauche. Micro : <kbd>Alt</kbd> (<kbd>⌥</kbd> sur Mac) + <kbd>Maj</kbd> + <kbd>M</kbd>.</div>
-    <div class="livetag hidden" id="liveTag"><b>●</b> Match en direct détecté : calez-vous avec le TOP.</div>
     <div id="calib" class="hidden">
-      <div class="small muted">Tout le monde appuie sur TOP au moment où il <b>voit</b> le même instant (coup de sifflet, score qui change). Ceux qui sont en avance se mettent en pause.</div>
-      <div class="row"><button class="ghost small" id="cStart">Lancer une calibration</button><button class="small hidden" id="align">Aligner</button></div>
-      <button id="top" class="hidden">TOP !</button>
-      <div id="cRes"></div>
-      <div id="cMsg" class="small muted"></div>
+      <div class="small" id="autoState" style="color:var(--ok)"></div>
+      <details id="manual">
+        <summary class="small muted">Calage manuel (si quelqu'un regarde sur la TV)</summary>
+        <div class="small muted" style="margin:6px 0">Tout le monde appuie sur TOP au moment où il <b>voit</b> le même instant (coup de sifflet, score qui change).</div>
+        <div class="row"><button class="ghost small" id="cStart">Lancer un TOP</button><button class="small hidden" id="align">Aligner</button></div>
+        <button id="top" class="hidden" style="margin-top:8px">TOP !</button>
+        <div id="cRes"></div>
+        <div id="cMsg" class="small muted"></div>
+      </details>
     </div>
   </div>
   <div id="chat" aria-live="polite"></div>

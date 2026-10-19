@@ -49,7 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(4000);
   const st = async p => p.$$eval('.peer', els => els.map(e => e.dataset.state || 'self'));
   ok((await st(pA)).includes('connected') && (await st(pB)).includes('connected'), `voix connectée dans les deux panneaux (${await st(pA)} | ${await st(pB)})`);
-  ok(await pB.evaluate(() => [...document.querySelectorAll('audio')].some(a => a.srcObject?.getAudioTracks().length)), 'Kylian reçoit l\'audio de Lucas');
+  ok((await pB.evaluate(() => chrome.runtime.sendMessage({ to: 'engine', cmd: 'stats' }))).audio >= 1, 'Kylian reçoit l\'audio de Lucas');
 
   // --- Chat ---
   await pA.fill('#chatIn', 'Ça commence !'); await pA.press('#chatIn', 'Enter'); await sleep(500);
@@ -70,6 +70,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await vA.evaluate(() => document.querySelector('video').play()); await sleep(1500);
   await vA.evaluate(() => { document.querySelector('video').dataset.cowatchLive = '1'; }); await sleep(2000); // direct détecté tout seul
   ok(await pB.isVisible('#calib'), 'mode match visible chez Kylian');
+  await pA.evaluate(() => { document.querySelector('#manual').open = true; }); await pB.evaluate(() => { document.querySelector('#manual').open = true; });
   await pA.click('#cStart'); await sleep(400);
   await pA.click('#top'); await sleep(2500); await pB.click('#top'); await sleep(500);
   ok((await pA.textContent('#cRes')).match(/Lucas2\.[4-7] s d'avance/), `calibration : ${await pA.textContent('#cRes')}`);
