@@ -150,7 +150,10 @@ function calibResult(room) {
 const ROOM_MAX = 8; // mesh WebRTC : au-delà, il faut un SFU (voir doc technique)
 
 function peersOf(room) { return [...(rooms.get(room) || new Map()).values()]; }
-function pub(c) { return { id: c.id, name: c.name, kind: c.kind }; }
+function pub(c) { return c.avatar ? { id: c.id, name: c.name, kind: c.kind, avatar: c.avatar } : { id: c.id, name: c.name, kind: c.kind }; }
+// Photo de profil : petite image (≤ 24 Ko) gardée en mémoire le temps du salon, jamais écrite sur disque.
+const AVATAR_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const cleanAvatar = a => (typeof a === 'string' && a.length <= 24000 && AVATAR_RE.test(a)) ? a : null;
 function broadcast(room, msg, exceptId, kind) {
   for (const c of peersOf(room)) if (c.id !== exceptId && (!kind || c.kind === kind)) c.conn.send(msg);
 }
@@ -183,6 +186,7 @@ function handle(conn) {
       const taken = new Set([...r.values()].filter(c => c.kind === kind).map(c => c.name));
       if (taken.has(name)) { let i = 2; while (taken.has(`${name} ${i}`)) i++; name = `${name} ${i}`; }
       me = { conn, id: crypto.randomBytes(4).toString('hex'), name, kind, room };
+      if (kind === 'salon') { const av = cleanAvatar(m.avatar); if (av) me.avatar = av; }
       const others = peersOf(room).map(pub);
       r.set(me.id, me); stats.joins++;
       const h = hostOf(room);
@@ -195,6 +199,12 @@ function handle(conn) {
     }
     if (!me) return;
     switch (m.t) {
+      case 'avatar': { // changement de photo en cours de salon
+        if (me.kind !== 'salon') return;
+        const av = cleanAvatar(m.avatar); if (av) me.avatar = av; else delete me.avatar;
+        broadcast(me.room, { t: 'avatar', id: me.id, avatar: me.avatar || null });
+        return;
+      }
       case 'signal': { // WebRTC offer/answer/ice relayé tel quel, uniquement entre membres du salon
         const target = rooms.get(me.room)?.get(m.to);
         if (target) target.conn.send({ t: 'signal', from: me.id, data: m.data });

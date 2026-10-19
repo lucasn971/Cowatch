@@ -9,12 +9,14 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, me = null, code = null, tabId = null, wsS = null, wsP = null;
 let localStream = null, muted = false, pttHeld = false, mode = 'vod', calibId = null, myTop = false, lastWelcome = null;
-let diagParts = [];
+let diagParts = [], myAvatar = null, display = { faces: true, chat: true };
 const peers = new Map(); // id -> {name, kind, pc, audio, el}
 
 // ---------- Démarrage ----------
 (async () => {
-  const st = await chrome.storage.local.get(['name', 'server']);
+  const st = await chrome.storage.local.get(['name', 'server', 'avatar', 'display']);
+  myAvatar = st.avatar || null; if (st.display) display = { ...display, ...st.display };
+  $('#optFaces').checked = display.faces; $('#optChat').checked = display.chat; renderMyAvatar();
   if (st.server) server = st.server;
   if (params.get('server')) server = params.get('server');
   $('#name').value = st.name || '';
@@ -27,8 +29,42 @@ const peers = new Map(); // id -> {name, kind, pc, audio, el}
     if ($('#name').value.trim()) join(pendingJoin.code);
     else { $('#err').textContent = 'Choisis un pseudo puis clique sur Rejoindre.'; $('#name').focus(); }
   }
-  toTab({ t: 'ping-video' });
+  toTab({ t: 'ping-video' }); toTab({ t: 'display', ...display });
 })();
+
+// ---------- Photo de profil (réduite à 96 px, gardée dans le navigateur) ----------
+function avatarEl(name, src, cls = 'avatar') {
+  if (src) { const i = document.createElement('img'); i.className = cls; i.src = src; i.alt = ''; return i; }
+  const s = document.createElement('span'); s.className = cls; s.textContent = (name || '?').trim().charAt(0).toUpperCase();
+  s.style.background = colorOf(name); return s;
+}
+function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; }
+function renderMyAvatar() {
+  const old = $('#myAvatar'), el = avatarEl($('#name').value || '?', myAvatar); el.id = 'myAvatar'; old.replaceWith(el);
+  $('#photoBtn').textContent = myAvatar ? 'Changer ma photo' : 'Ajouter ma photo'; $('#photoDel').classList.toggle('hidden', !myAvatar);
+}
+$('#name').addEventListener('input', () => { if (!myAvatar) renderMyAvatar(); });
+$('#photoBtn').onclick = () => $('#photoIn').click();
+$('#photoDel').onclick = async () => { myAvatar = null; await chrome.storage.local.remove('avatar'); renderMyAvatar(); sendS({ t: 'avatar', avatar: null }); };
+$('#photoIn').onchange = async () => {
+  const f = $('#photoIn').files[0]; if (!f) return;
+  try {
+    const bmp = await createImageBitmap(f); const S = 96, c = document.createElement('canvas'); c.width = c.height = S;
+    const k = Math.min(bmp.width, bmp.height); c.getContext('2d').drawImage(bmp, (bmp.width - k) / 2, (bmp.height - k) / 2, k, k, 0, 0, S, S);
+    myAvatar = c.toDataURL('image/jpeg', 0.8); await chrome.storage.local.set({ avatar: myAvatar }); renderMyAvatar();
+    sendS({ t: 'avatar', avatar: myAvatar });
+  } catch { $('#err').textContent = 'Image illisible : essaie une photo JPG ou PNG.'; }
+  $('#photoIn').value = '';
+};
+
+// ---------- Affichage sur la vidéo (photos de ceux qui parlent, messages) ----------
+function saveDisplay() { display = { faces: $('#optFaces').checked, chat: $('#optChat').checked }; chrome.storage.local.set({ display }); toTab({ t: 'display', ...display }); }
+$('#optFaces').onchange = saveDisplay; $('#optChat').onchange = saveDisplay;
+function pushRoster() {
+  if (!me?.id) return;
+  const people = [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.id === me.id ? me.name : p.name, avatar: p.id === me.id ? myAvatar : p.avatar || null, self: p.id === me.id, muted: p.id === me.id ? micOff() : false }));
+  toTab({ t: 'roster', people });
+}
 
 function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
 $('#create').onclick = () => join(randomCode());
@@ -58,6 +94,7 @@ async function getMic() {
 $('#micFix').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') });
 chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.cmd === 'micGranted' && code) reconnectWithMic();
+  if (m.cmd === 'toggleMic' && code) { muted = !muted; applyMic(); toTab({ t: 'toast', text: muted ? 'Micro coupé' : 'Micro activé' }); }
   if (sender.tab && sender.tab.id === tabId) fromTab(m);
 });
 async function reconnectWithMic() {
@@ -76,7 +113,7 @@ const toTab = m => { if (tabId != null) chrome.tabs.sendMessage(tabId, m).catch(
 let retryS = 0, retryP = 0, pingS = null, pingP = null, reconnectingS = false;
 function connectSalon() {
   wsS = new WebSocket(wsUrl());
-  wsS.onopen = () => { sendS({ t: 'join', room: code, name: me.name, kind: 'salon' }); clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000); };
+  wsS.onopen = () => { sendS({ t: 'join', room: code, name: me.name, kind: 'salon', avatar: myAvatar || undefined }); clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000); };
   wsS.onerror = () => { if (!me.id) $('#err').textContent = 'Le serveur se réveille, nouvel essai automatique…'; };
   wsS.onclose = () => {
     clearInterval(pingS); if (!code) return;
@@ -97,10 +134,11 @@ function connectSalon() {
       addPeer({ id: me.id, name: me.name + ' (toi)', kind: 'salon' }, true);
       if (localStream) watchLevel(me.id, localStream);
       for (const p of m.peers) { addPeer(p); if (p.kind === 'salon') await call(p.id); }
-      setMode(m.mode); sys(`Tu es dans le salon ${code}. Envoie l'invitation à tes amis.`);
+      setMode(m.mode); sys(`Tu es dans le salon ${code}. Envoie l'invitation à tes amis.`); pushRoster();
     }
-    if (m.t === 'peer-joined') { addPeer(m.peer); if (m.peer.kind === 'salon') sys(`${m.peer.name} est arrivé`); }
-    if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.el?.remove(); p.audio?.remove(); peers.delete(m.id); if (p.kind === 'salon') sys(`${p.name} est parti`); } }
+    if (m.t === 'peer-joined') { addPeer(m.peer); if (m.peer.kind === 'salon') { sys(`${m.peer.name} est arrivé`); pushRoster(); } }
+    if (m.t === 'avatar') { const p = peers.get(m.id); if (p) { p.avatar = m.avatar || null; if (p.el) { const a = avatarEl(p.name, p.avatar); p.el.querySelector('.avatar').replaceWith(a); } pushRoster(); } }
+    if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.el?.remove(); p.audio?.remove(); peers.delete(m.id); if (p.kind === 'salon') { sys(`${p.name} est parti`); pushRoster(); } } }
     if (m.t === 'signal') await onSignal(m.from, m.data);
     if (m.t === 'chat') addChat(m);
     if (m.t === 'chat-history') m.items.forEach(addChat);
@@ -127,7 +165,7 @@ function connectPlayer() {
 }
 function fromTab(m) {
   if (m.cmd === 'sync') sendP({ t: 'sync', action: m.action, time: m.time, playing: m.playing, rate: m.rate });
-  if (m.cmd === 'hello' && lastWelcome) toTab(lastWelcome); // l'onglet a rechargé la page : on lui redonne le salon
+  if (m.cmd === 'hello') { toTab({ t: 'display', ...display }); if (lastWelcome) { toTab(lastWelcome); pushRoster(); } } // l'onglet a rechargé la page : on lui redonne le salon
   if (m.cmd === 'diag') diagParts.push(m.data);
   if (m.cmd === 'video') { $('#playerStatus').textContent = m.found ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!m.found); }
 }
@@ -139,7 +177,7 @@ function addPeer(p, self = false) {
   if (p.kind === 'salon') {
     const el = document.createElement('div'); el.className = 'peer' + (self ? ' on' : '');
     const d = document.createElement('span'); d.className = 'd'; const n = document.createElement('span'); n.textContent = p.name;
-    el.append(d, n); $('#peers').append(el); entry.el = el;
+    el.append(d, avatarEl(p.name.replace(/ \(toi\)$/, ''), self ? myAvatar : p.avatar), n); $('#peers').append(el); entry.el = el;
   }
   peers.set(p.id, entry);
 }
@@ -171,13 +209,20 @@ function watchLevel(id, stream) {
   try {
     actx = actx || new AudioContext(); const an = actx.createAnalyser(); an.fftSize = 512; actx.createMediaStreamSource(stream).connect(an);
     const buf = new Uint8Array(an.fftSize);
-    const tick = () => { const p = peers.get(id); if (!p) return; an.getByteTimeDomainData(buf); let s = 0; for (const v of buf) s += (v - 128) ** 2;
-      p.el?.classList.toggle('speaking', Math.sqrt(s / buf.length) > 6 && !(id === me.id && micOff())); requestAnimationFrame(tick); };
-    tick();
+    // setInterval plutôt que requestAnimationFrame : continue quand le panneau est masqué (vidéo en plein écran).
+    let on = false, lastLoud = 0;
+    const timer = setInterval(() => {
+      const p = peers.get(id); if (!p) return clearInterval(timer);
+      an.getByteTimeDomainData(buf); let s = 0; for (const v of buf) s += (v - 128) ** 2;
+      const loud = Math.sqrt(s / buf.length) > 6 && !(id === me.id && micOff()), now = Date.now();
+      if (loud) lastLoud = now;
+      const next = loud || now - lastLoud < 700; // petite traîne pour éviter le clignotement
+      if (next !== on) { on = next; p.el?.classList.toggle('speaking', on); toTab({ t: 'speak', id, on }); }
+    }, 100);
   } catch {}
 }
 const micOff = () => muted || ($('#ptt').checked && !pttHeld);
-function applyMic() { localStream?.getAudioTracks().forEach(t => t.enabled = !micOff()); $('#mute').textContent = muted ? 'Réactiver le micro' : 'Couper le micro'; }
+function applyMic() { localStream?.getAudioTracks().forEach(t => t.enabled = !micOff()); $('#mute').textContent = muted ? 'Réactiver le micro' : 'Couper le micro'; pushRoster(); }
 $('#mute').onclick = () => { muted = !muted; applyMic(); };
 $('#ptt').onchange = applyMic;
 addEventListener('keydown', e => { if (e.code === 'Space' && $('#ptt').checked && e.target.tagName !== 'INPUT') { e.preventDefault(); pttHeld = true; applyMic(); } });

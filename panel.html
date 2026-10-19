@@ -48,6 +48,15 @@ section{padding:14px}
 .compose{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:6px}
 .status{font-size:12px;color:var(--muted)}
 .status.ok{color:var(--ok)}
+.avatar{width:22px;height:22px;border-radius:50%;object-fit:cover;flex:none;background:#2a2731;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
+.peer .avatar{width:18px;height:18px;font-size:9px}
+.peer.speaking .avatar{box-shadow:0 0 0 2px var(--speak)}
+.me-photo{display:flex;align-items:center;gap:10px;margin-top:10px}
+.me-photo .avatar{width:44px;height:44px;font-size:17px}
+.opts{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px}
+.opts label{display:flex;align-items:center;gap:8px;margin:0;color:var(--text);font-size:13px}
+.opts input{width:auto}
+kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 4px}
 </style>
 </head>
 <body>
@@ -61,6 +70,12 @@ section{padding:14px}
   <div class="muted small">Ouvre ton programme sur Canal+, Paramount+ ou TF1+, puis crée un salon et envoie le lien à tes amis.</div>
   <label for="name">Ton pseudo</label>
   <input id="name" maxlength="24" placeholder="ex. Lucas">
+  <div class="me-photo">
+    <span class="avatar" id="myAvatar"></span>
+    <button class="ghost small" id="photoBtn">Ajouter ma photo</button>
+    <button class="ghost small hidden" id="photoDel" aria-label="Retirer ma photo">Retirer</button>
+    <input type="file" id="photoIn" accept="image/*" class="hidden">
+  </div>
   <button id="create" style="margin-top:10px">Créer un salon</button>
   <label for="codeIn">Ou rejoindre avec un code</label>
   <div class="row"><input id="codeIn" maxlength="24" placeholder="ex. K7PQ2" style="flex:1"><button class="ghost" id="joinBtn">Rejoindre</button></div>
@@ -80,6 +95,12 @@ section{padding:14px}
       <button id="micFix" class="small hidden">Autoriser le micro</button>
     </div>
     <div class="react" id="react"></div>
+    <details class="opts" id="opts">
+      <summary class="small">Affichage sur la vidéo</summary>
+      <label><input type="checkbox" id="optFaces" checked> Afficher la photo de celui qui parle</label>
+      <label><input type="checkbox" id="optChat" checked> Afficher les messages du chat</label>
+      <div class="small muted">Plein écran : mets la vidéo en plein écran. La voix continue, et la photo de celui qui parle s'affiche en haut à droite. Couper / réactiver ton micro : <kbd>Alt</kbd> (<kbd>⌥</kbd> sur Mac) + <kbd>Maj</kbd> + <kbd>M</kbd>.</div>
+    </details>
     <div class="tabs">
       <button class="ghost" id="mVod">Série / film</button>
       <button class="ghost" id="mLive">Match en direct</button>

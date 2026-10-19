@@ -38,3 +38,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true;
   }
 });
+
+// Raccourci clavier (Alt+Maj+M) : couper / réactiver le micro, même vidéo en plein écran.
+chrome.commands?.onCommand.addListener(cmd => { if (cmd === 'toggle-mic') chrome.runtime.sendMessage({ cmd: 'toggleMic' }).catch(() => {}); });

@@ -73,10 +73,12 @@
   }
 
   let bannerEl;
+  // En plein écran, seul l'élément affiché en plein écran est visible : on y place nos calques.
+  function layerParent() { const f = document.fullscreenElement || document.webkitFullscreenElement; return f && f.tagName !== 'VIDEO' ? f : document.documentElement; }
   function banner(txt) {
     if (window.top !== window) return;
-    bannerEl = bannerEl || Object.assign(document.createElement('div'), { style: 'position:fixed;top:12px;right:12px;z-index:2147483647;background:#ff5a3c;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:8px;pointer-events:none' });
-    bannerEl.textContent = txt; document.documentElement.append(bannerEl);
+    bannerEl = bannerEl || Object.assign(document.createElement('div'), { style: 'position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:70vw;z-index:2147483647;background:#ff5a3c;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:8px;pointer-events:none' });
+    bannerEl.textContent = txt; layerParent().append(bannerEl);
     clearTimeout(bannerEl._t); bannerEl._t = setTimeout(() => bannerEl.remove(), 3500);
   }
 
@@ -103,15 +105,66 @@
     }
     return out;
   }
+
+  // ---------- Visages : photo de celui qui parle, en haut à droite de la vidéo ----------
+  let display = { faces: true, chat: true }, roster = new Map(), faceBox = null;
+  const speaking = new Map(); // id -> timer de disparition
+  function faceLayer() {
+    if (window.top !== window) return null;
+    if (!faceBox) {
+      faceBox = document.createElement('div'); faceBox.id = 'cowatch-faces';
+      faceBox.style.cssText = 'position:fixed;top:18px;right:18px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:10px;pointer-events:none;font:600 12px system-ui,sans-serif';
+    }
+    const par = layerParent(); if (faceBox.parentNode !== par) par.append(faceBox);
+    return faceBox;
+  }
+  function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; }
+  function faceEl(p) {
+    const w = document.createElement('div'); w.dataset.id = p.id;
+    w.style.cssText = 'display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(8px)';
+    const lab = document.createElement('span'); lab.textContent = p.self ? 'Toi' : p.name;
+    lab.style.cssText = 'color:#fff;background:rgba(15,14,19,.72);padding:3px 8px;border-radius:999px;text-shadow:0 1px 2px #000';
+    let pic;
+    if (p.avatar) { pic = document.createElement('img'); pic.src = p.avatar; pic.alt = ''; pic.style.objectFit = 'cover'; }
+    else { pic = document.createElement('div'); pic.textContent = (p.name || '?').charAt(0).toUpperCase(); pic.style.cssText = `display:grid;place-items:center;color:#fff;font-size:20px;background:${colorOf(p.name)}`; }
+    pic.style.width = pic.style.height = '52px'; pic.style.borderRadius = '50%'; pic.style.boxShadow = '0 0 0 3px #ffd23c,0 6px 18px rgba(0,0,0,.45)';
+    w.append(lab, pic); return w;
+  }
+  function showFace(id, on) {
+    const box = faceLayer(); if (!box) return;
+    const p = roster.get(id); if (!p) return;
+    let el = box.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (on && display.faces) {
+      clearTimeout(speaking.get(id));
+      if (!el) { el = faceEl(p); box.append(el); requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'none'; }); }
+    } else if (el) {
+      speaking.set(id, setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 260); }, 900));
+    }
+  }
+  // Micro coupé : petite pastille permanente pour le savoir même en plein écran.
+  function renderMuted() {
+    const box = faceLayer(); if (!box) return;
+    const self = [...roster.values()].find(p => p.self);
+    let pill = box.querySelector('[data-muted]');
+    if (self && self.muted && display.faces) {
+      if (!pill) { pill = document.createElement('div'); pill.dataset.muted = '1'; pill.textContent = '🔇 Micro coupé'; pill.style.cssText = 'color:#fff;background:rgba(255,90,60,.9);padding:4px 10px;border-radius:999px'; box.prepend(pill); }
+    } else pill?.remove();
+  }
+  function toast(text) { banner(text); }
+  document.addEventListener('fullscreenchange', () => { if (faceBox) faceLayer(); if (bannerEl?.isConnected) layerParent().append(bannerEl); });
   chrome.runtime.onMessage.addListener(m => {
+    if (m.t === 'display') { display = { faces: m.faces !== false, chat: m.chat !== false }; if (!display.faces && faceBox) faceBox.replaceChildren(); renderMuted(); return; }
+    if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); renderMuted(); return; }
+    if (m.t === 'speak') { showFace(m.id, m.on); return; }
+    if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
     if (m.t === 'welcome') { mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
-    else if (m.t === 'reaction') banner(`${m.name} ${m.emoji}`);
-    else if (m.t === 'chat') banner(`${m.name} : ${m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}`);
+    else if (m.t === 'reaction' && display.chat) banner(`${m.name} ${m.emoji}`);
+    else if (m.t === 'chat' && display.chat) banner(`${m.name} : ${m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}`);
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor);
     else if (m.t === 'disconnected') { me = null; banner('Cowatch déconnecté'); }

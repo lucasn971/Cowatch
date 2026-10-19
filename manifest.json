@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Cowatch — regarder ensemble",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Regardez Canal+, Paramount+ ou TF1+ à plusieurs à distance : voix, chat, réactions et lecture synchronisée.",
   "permissions": [
     "storage",
@@ -63,5 +63,14 @@
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "minimum_chrome_version": "116"
+  "minimum_chrome_version": "116",
+  "commands": {
+    "toggle-mic": {
+      "suggested_key": {
+        "default": "Alt+Shift+M",
+        "mac": "Alt+Shift+M"
+      },
+      "description": "Couper / réactiver le micro Cowatch"
+    }
+  }
 }
