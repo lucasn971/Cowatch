@@ -8,15 +8,14 @@ const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, me = null, code = null, tabId = null, wsS = null, wsP = null;
-let localStream = null, muted = false, pttHeld = false, mode = 'vod', calibId = null, myTop = false, lastWelcome = null;
-let diagParts = [], myAvatar = null, display = { faces: true, chat: true };
+let localStream = null, muted = false, mode = 'vod', calibId = null, myTop = false, lastWelcome = null;
+let diagParts = [], myAvatar = null, tabLive = null;
 const peers = new Map(); // id -> {name, kind, pc, audio, el}
 
 // ---------- Démarrage ----------
 (async () => {
-  const st = await chrome.storage.local.get(['name', 'server', 'avatar', 'display']);
-  myAvatar = st.avatar || null; if (st.display) display = { ...display, ...st.display };
-  $('#optFaces').checked = display.faces; $('#optChat').checked = display.chat; renderMyAvatar();
+  const st = await chrome.storage.local.get(['name', 'server', 'avatar']);
+  myAvatar = st.avatar || null; renderMyAvatar();
   if (st.server) server = st.server;
   if (params.get('server')) server = params.get('server');
   $('#name').value = st.name || '';
@@ -29,7 +28,7 @@ const peers = new Map(); // id -> {name, kind, pc, audio, el}
     if ($('#name').value.trim()) join(pendingJoin.code);
     else { $('#err').textContent = 'Choisis un pseudo puis clique sur Rejoindre.'; $('#name').focus(); }
   }
-  toTab({ t: 'ping-video' }); toTab({ t: 'display', ...display });
+  toTab({ t: 'ping-video' });
 })();
 
 // ---------- Photo de profil (réduite à 96 px, gardée dans le navigateur) ----------
@@ -57,9 +56,7 @@ $('#photoIn').onchange = async () => {
   $('#photoIn').value = '';
 };
 
-// ---------- Affichage sur la vidéo (photos de ceux qui parlent, messages) ----------
-function saveDisplay() { display = { faces: $('#optFaces').checked, chat: $('#optChat').checked }; chrome.storage.local.set({ display }); toTab({ t: 'display', ...display }); }
-$('#optFaces').onchange = saveDisplay; $('#optChat').onchange = saveDisplay;
+// ---------- Calques sur la vidéo : photo de celui qui parle (haut gauche), messages (bas droite) ----------
 function pushRoster() {
   if (!me?.id) return;
   const people = [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.id === me.id ? me.name : p.name, avatar: p.id === me.id ? myAvatar : p.avatar || null, self: p.id === me.id, muted: p.id === me.id ? micOff() : false }));
@@ -68,7 +65,9 @@ function pushRoster() {
 
 function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
 $('#create').onclick = () => join(randomCode());
-$('#joinBtn').onclick = () => { const c = $('#codeIn').value.trim().toUpperCase(); if (c) join(c); else $('#err').textContent = 'Entre un code de salon.'; };
+// Accepte le lien d'invitation complet (…/j/CODE?u=…) ou le code seul.
+function codeFrom(v) { v = (v || '').trim(); const m = v.match(/\/(?:j|s)\/([A-Za-z0-9-]{3,24})/); return (m ? m[1] : /^[A-Za-z0-9-]{3,24}$/.test(v) ? v : '').toUpperCase(); }
+$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c); else $('#err').textContent = 'Colle le lien d\'invitation reçu (ou le code du salon).'; };
 $('#codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
 
 async function join(c) {
@@ -134,7 +133,7 @@ function connectSalon() {
       addPeer({ id: me.id, name: me.name + ' (toi)', kind: 'salon' }, true);
       if (localStream) watchLevel(me.id, localStream);
       for (const p of m.peers) { addPeer(p); if (p.kind === 'salon') await call(p.id); }
-      setMode(m.mode); sys(`Tu es dans le salon ${code}. Envoie l'invitation à tes amis.`); pushRoster();
+      setMode(m.mode); sys(`Tu es dans le salon ${code}. Envoie l'invitation à tes amis.`); pushRoster(); autoMode();
     }
     if (m.t === 'peer-joined') { addPeer(m.peer); if (m.peer.kind === 'salon') { sys(`${m.peer.name} est arrivé`); pushRoster(); } }
     if (m.t === 'avatar') { const p = peers.get(m.id); if (p) { p.avatar = m.avatar || null; if (p.el) { const a = avatarEl(p.name, p.avatar); p.el.querySelector('.avatar').replaceWith(a); } pushRoster(); } }
@@ -165,8 +164,9 @@ function connectPlayer() {
 }
 function fromTab(m) {
   if (m.cmd === 'sync') sendP({ t: 'sync', action: m.action, time: m.time, playing: m.playing, rate: m.rate });
-  if (m.cmd === 'hello') { toTab({ t: 'display', ...display }); if (lastWelcome) { toTab(lastWelcome); pushRoster(); } } // l'onglet a rechargé la page : on lui redonne le salon
+  if (m.cmd === 'hello') { if (lastWelcome) { toTab(lastWelcome); pushRoster(); } } // l'onglet a rechargé la page : on lui redonne le salon
   if (m.cmd === 'diag') diagParts.push(m.data);
+  if (m.cmd === 'kind') { tabLive = !!m.live; autoMode(); }
   if (m.cmd === 'video') { $('#playerStatus').textContent = m.found ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!m.found); }
 }
 
@@ -221,12 +221,9 @@ function watchLevel(id, stream) {
     }, 100);
   } catch {}
 }
-const micOff = () => muted || ($('#ptt').checked && !pttHeld);
+const micOff = () => muted;
 function applyMic() { localStream?.getAudioTracks().forEach(t => t.enabled = !micOff()); $('#mute').textContent = muted ? 'Réactiver le micro' : 'Couper le micro'; pushRoster(); }
 $('#mute').onclick = () => { muted = !muted; applyMic(); };
-$('#ptt').onchange = applyMic;
-addEventListener('keydown', e => { if (e.code === 'Space' && $('#ptt').checked && e.target.tagName !== 'INPUT') { e.preventDefault(); pttHeld = true; applyMic(); } });
-addEventListener('keyup', e => { if (e.code === 'Space') { pttHeld = false; applyMic(); } });
 
 // ---------- Chat ----------
 function addChat(m) {
@@ -253,11 +250,11 @@ $('#invite').onclick = async () => {
 // ---------- Mode série / match, calibration ----------
 function setMode(md) {
   mode = md === 'live' ? 'live' : 'vod';
-  $('#mVod').classList.toggle('on', mode === 'vod'); $('#mLive').classList.toggle('on', mode === 'live');
+  $('#liveTag').classList.toggle('hidden', mode !== 'live');
   $('#calib').classList.toggle('hidden', mode !== 'live');
 }
-$('#mVod').onclick = () => sendS({ t: 'mode', mode: 'vod' });
-$('#mLive').onclick = () => sendS({ t: 'mode', mode: 'live' });
+// Mode choisi automatiquement : direct (match) ou replay / série, selon la vidéo de l'onglet.
+function autoMode() { if (code && me?.id && tabLive != null && (tabLive ? 'live' : 'vod') !== mode) sendS({ t: 'mode', mode: tabLive ? 'live' : 'vod' }); }
 $('#cStart').onclick = () => sendS({ t: 'calib-start', label: 'le score change à l\'écran (ou le prochain coup de sifflet)' });
 $('#top').onclick = () => { if (myTop) return; myTop = true; sendS({ t: 'top', id: calibId }); $('#top').disabled = true; $('#top').textContent = 'TOP enregistré ✓'; };
 $('#align').onclick = () => sendS({ t: 'align' });

@@ -30,7 +30,13 @@
     if (!video) return;
     chrome.runtime.sendMessage({ cmd: 'sync', action, time: video.currentTime, playing: !video.paused, rate: video.playbackRate }).catch(() => {}); // vers le panneau
   }
-  setInterval(() => attach(findVideo()), 1000);
+  // Direct ou replay ? (durée infinie ou gigantesque = direct, comme sur Canal+)
+  let lastKind = null;
+  const isLive = v => v.dataset.cowatchLive === '1' || !isFinite(v.duration) || v.duration > 1e6;
+  setInterval(() => {
+    attach(findVideo());
+    if (video && video.readyState > 0) { const k = isLive(video); if (k !== lastKind) { lastKind = k; chrome.runtime.sendMessage({ cmd: 'kind', live: k }).catch(() => {}); } }
+  }, 1000);
   chrome.runtime.sendMessage({ cmd: 'hello' }).catch(() => {}); // page (re)chargée : le panneau renvoie l'état du salon
 
   // Invitation en attente : petite bulle qui ouvre le panneau d'un clic.
@@ -107,13 +113,13 @@
   }
 
   // ---------- Visages : photo de celui qui parle, en haut à droite de la vidéo ----------
-  let display = { faces: true, chat: true }, roster = new Map(), faceBox = null;
+  let roster = new Map(), faceBox = null, chatBox = null;
   const speaking = new Map(); // id -> timer de disparition
   function faceLayer() {
     if (window.top !== window) return null;
     if (!faceBox) {
       faceBox = document.createElement('div'); faceBox.id = 'cowatch-faces';
-      faceBox.style.cssText = 'position:fixed;top:18px;right:18px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:10px;pointer-events:none;font:600 12px system-ui,sans-serif';
+      faceBox.style.cssText = 'position:fixed;top:18px;left:18px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-start;gap:10px;pointer-events:none;font:600 12px system-ui,sans-serif';
     }
     const par = layerParent(); if (faceBox.parentNode !== par) par.append(faceBox);
     return faceBox;
@@ -121,20 +127,20 @@
   function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; }
   function faceEl(p) {
     const w = document.createElement('div'); w.dataset.id = p.id;
-    w.style.cssText = 'display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(8px)';
+    w.style.cssText = 'display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(-8px)';
     const lab = document.createElement('span'); lab.textContent = p.self ? 'Toi' : p.name;
     lab.style.cssText = 'color:#fff;background:rgba(15,14,19,.72);padding:3px 8px;border-radius:999px;text-shadow:0 1px 2px #000';
     let pic;
     if (p.avatar) { pic = document.createElement('img'); pic.src = p.avatar; pic.alt = ''; pic.style.objectFit = 'cover'; }
     else { pic = document.createElement('div'); pic.textContent = (p.name || '?').charAt(0).toUpperCase(); pic.style.cssText = `display:grid;place-items:center;color:#fff;font-size:20px;background:${colorOf(p.name)}`; }
     pic.style.width = pic.style.height = '52px'; pic.style.borderRadius = '50%'; pic.style.boxShadow = '0 0 0 3px #ffd23c,0 6px 18px rgba(0,0,0,.45)';
-    w.append(lab, pic); return w;
+    w.append(pic, lab); return w;
   }
   function showFace(id, on) {
     const box = faceLayer(); if (!box) return;
     const p = roster.get(id); if (!p) return;
     let el = box.querySelector(`[data-id="${CSS.escape(id)}"]`);
-    if (on && display.faces) {
+    if (on) {
       clearTimeout(speaking.get(id));
       if (!el) { el = faceEl(p); box.append(el); requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'none'; }); }
     } else if (el) {
@@ -146,14 +152,35 @@
     const box = faceLayer(); if (!box) return;
     const self = [...roster.values()].find(p => p.self);
     let pill = box.querySelector('[data-muted]');
-    if (self && self.muted && display.faces) {
+    if (self && self.muted) {
       if (!pill) { pill = document.createElement('div'); pill.dataset.muted = '1'; pill.textContent = '🔇 Micro coupé'; pill.style.cssText = 'color:#fff;background:rgba(255,90,60,.9);padding:4px 10px;border-radius:999px'; box.prepend(pill); }
     } else pill?.remove();
   }
   function toast(text) { banner(text); }
-  document.addEventListener('fullscreenchange', () => { if (faceBox) faceLayer(); if (bannerEl?.isConnected) layerParent().append(bannerEl); });
+  // ---------- Messages du chat : en bas à droite, en transparence, ils s'effacent seuls ----------
+  function chatLayer() {
+    if (window.top !== window) return null;
+    if (!chatBox) {
+      chatBox = document.createElement('div'); chatBox.id = 'cowatch-chat';
+      chatBox.style.cssText = 'position:fixed;right:24px;bottom:96px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,40vw);pointer-events:none;font:14px/1.35 system-ui,sans-serif';
+    }
+    const par = layerParent(); if (chatBox.parentNode !== par) par.append(chatBox);
+    return chatBox;
+  }
+  function showChat(name, text, big) {
+    const box = chatLayer(); if (!box) return;
+    const p = [...roster.values()].find(x => x.name === name);
+    const d = document.createElement('div');
+    d.style.cssText = 'color:#fff;background:rgba(15,14,19,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:6px 11px;border-radius:14px;text-shadow:0 1px 2px rgba(0,0,0,.6);transition:opacity .5s;opacity:0;word-wrap:break-word;max-width:100%';
+    const b = document.createElement('b'); b.textContent = (p && p.self ? 'Toi' : name) + ' '; b.style.color = '#ffd23c';
+    const t = document.createElement('span'); t.textContent = text; if (big) t.style.fontSize = '22px';
+    d.append(b, t); box.append(d);
+    requestAnimationFrame(() => { d.style.opacity = '1'; });
+    while (box.children.length > 5) box.firstChild.remove();
+    setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
+  }
+  document.addEventListener('fullscreenchange', () => { if (faceBox) faceLayer(); if (chatBox) chatLayer(); if (bannerEl?.isConnected) layerParent().append(bannerEl); });
   chrome.runtime.onMessage.addListener(m => {
-    if (m.t === 'display') { display = { faces: m.faces !== false, chat: m.chat !== false }; if (!display.faces && faceBox) faceBox.replaceChildren(); renderMuted(); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); renderMuted(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }
@@ -163,8 +190,8 @@
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
-    else if (m.t === 'reaction' && display.chat) banner(`${m.name} ${m.emoji}`);
-    else if (m.t === 'chat' && display.chat) banner(`${m.name} : ${m.text.length > 80 ? m.text.slice(0, 80) + '…' : m.text}`);
+    else if (m.t === 'reaction') showChat(m.name, m.emoji, true);
+    else if (m.t === 'chat') showChat(m.name, m.text);
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor);
     else if (m.t === 'disconnected') { me = null; banner('Cowatch déconnecté'); }

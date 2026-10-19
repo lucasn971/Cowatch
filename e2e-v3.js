@@ -54,7 +54,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // --- Chat ---
   await pA.fill('#chatIn', 'Ça commence !'); await pA.press('#chatIn', 'Enter'); await sleep(500);
   ok((await pB.textContent('#chat')).includes('LucasÇa commence !'), 'chat : message de Lucas reçu dans le panneau de Kylian');
-  ok(await vB.locator('text=Lucas : Ça commence !').count() >= 1, 'chat : message affiché aussi sur la vidéo de Kylian');
+  ok(await vB.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('Ça commence !')), 'chat : message affiché aussi sur la vidéo de Kylian (bas droite)');
   await pB.click('#react button >> nth=0'); await sleep(400);
   ok((await pA.textContent('#chat')).includes('😂'), 'réaction de Kylian reçue par Lucas');
 
@@ -68,7 +68,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // --- Mode match : calibration et alignement ---
   await vA.evaluate(() => document.querySelector('video').play()); await sleep(1500);
-  await pA.click('#mLive'); await sleep(500);
+  await vA.evaluate(() => { document.querySelector('video').dataset.cowatchLive = '1'; }); await sleep(2000); // direct détecté tout seul
   ok(await pB.isVisible('#calib'), 'mode match visible chez Kylian');
   await pA.click('#cStart'); await sleep(400);
   await pA.click('#top'); await sleep(2500); await pB.click('#top'); await sleep(500);

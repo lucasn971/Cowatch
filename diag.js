@@ -7,7 +7,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const c = await chromium.launchPersistentContext('/tmp/claude-0/diag', { headless: true, channel: 'chromium', args: [
-    `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, '--autoplay-policy=no-user-gesture-required'] });
+    `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, '--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
   const sw = c.serviceWorkers()[0] || await c.waitForEvent('serviceworker');
   const id = new URL(sw.url()).host, errs = [];
   // Page dont la vidéo est déplacée dans un shadow DOM (comme certains lecteurs).
@@ -18,6 +18,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.goto(`chrome-extension://${id}/panel.html?tab=${tab}&server=${encodeURIComponent(BASE)}`);
   await sleep(2000);
   ok((await p.textContent('#playerStatus')).includes('détectée ✓'), 'vidéo trouvée même cachée dans un shadow DOM');
+  await p.fill('#name', 'Lucas'); await p.click('#create'); await p.waitForSelector('#room:not(.hidden)');
   await p.click('#diag'); await sleep(4500);
   const txt = await p.inputValue('#diagOut');
   ok(txt.startsWith('DIAGNOSTIC COWATCH'), 'le diagnostic produit un rapport');

@@ -32,14 +32,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await A.p.locator('img#myAvatar').count() === 1, 'aperçu de la photo sur l\'accueil');
   await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)');
   const code = await A.p.textContent('#code');
-  await B.p.fill('#codeIn', code); await B.p.click('#joinBtn'); await B.p.waitForSelector('#room:not(.hidden)');
+  await B.p.fill('#codeIn', `${BASE}/j/${code}?u=${encodeURIComponent('https://www.canalplus.com/live/')}`); await B.p.click('#joinBtn'); // lien d'invitation collé tel quel await B.p.waitForSelector('#room:not(.hidden)');
   await sleep(4000);
+  ok(await B.p.textContent('#code') === code, 'rejoindre en collant le lien d\'invitation complet');
   ok(await B.p.locator('.peer img.avatar').count() === 1, 'Kilian voit la photo de Lucas dans la liste');
   ok(await B.p.locator('.peer span.avatar').count() >= 1, 'sans photo : initiale à la place');
   // Le faux micro émet des bips : Lucas « parle » → son visage apparaît sur la vidéo de Kilian
   let seen = false;
   for (let i = 0; i < 80 && !seen; i++) { seen = await B.v.evaluate(() => !!document.querySelector('#cowatch-faces img')); if (!seen) await sleep(250); }
-  ok(seen, 'visage de Lucas affiché en haut à droite de la vidéo de Kilian quand il parle');
+  ok(seen, 'visage de Lucas affiché sur la vidéo de Kilian quand il parle');
   // Plein écran (vrai geste utilisateur) : le calque suit l'élément en plein écran
   await B.v.evaluate(() => { const w = document.createElement('div'); w.id = 'wrap'; const v = document.querySelector('video'); v.before(w); w.append(v);
     const b = document.createElement('button'); b.id = 'fs'; b.textContent = 'plein écran'; b.onclick = () => w.requestFullscreen(); document.body.prepend(b); });
@@ -53,15 +54,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(600);
   ok(await B.v.evaluate(() => !!document.querySelector('[data-muted]')), 'raccourci Alt+Maj+M : pastille « Micro coupé » visible sur la vidéo');
   ok((await B.p.textContent('#mute')).includes('Réactiver'), 'le panneau reflète le micro coupé');
-  // Masquer les messages du chat sur la vidéo
-  await B.p.evaluate(() => { document.querySelector('#opts').open = true; });
-  await B.p.uncheck('#optChat'); await sleep(300);
-  await A.p.fill('#chatIn', 'secret'); await A.p.press('#chatIn', 'Enter'); await sleep(700);
-  ok(!(await B.v.evaluate(() => document.body.innerText.includes('Lucas : secret') || !!document.fullscreenElement?.innerText.includes('Lucas : secret'))), 'chat masqué : aucun message sur la vidéo');
-  ok((await B.p.textContent('#chat')).includes('secret'), 'chat masqué : le message reste dans le panneau');
-  // Masquer les visages
-  await B.p.uncheck('#optFaces'); await sleep(1500);
-  ok(await B.v.evaluate(() => !document.querySelector('#cowatch-faces img')), 'visages désactivés : rien sur la vidéo');
+  // Messages : en bas à droite de la vidéo, même en plein écran ; aucun réglage à faire
+  await A.p.fill('#chatIn', 'Quel but !'); await A.p.press('#chatIn', 'Enter'); await sleep(700);
+  const chat = await B.v.evaluate(() => { const c = document.querySelector('#cowatch-chat'); if (!c) return null; const r = c.getBoundingClientRect(); return { txt: c.innerText, inFs: !!document.fullscreenElement?.contains(c), right: innerWidth - r.right, bottom: innerHeight - r.bottom }; });
+  ok(chat && chat.txt.includes('Quel but !') && chat.inFs, 'message affiché sur la vidéo en plein écran');
+  ok(chat && chat.right < 60 && chat.bottom < 200, `message placé en bas à droite (marges ${chat && Math.round(chat.right)} / ${chat && Math.round(chat.bottom)} px)`);
+  const face = await B.v.evaluate(() => { const f = document.querySelector('#cowatch-faces'); const r = f.getBoundingClientRect(); return { left: r.left, top: r.top }; });
+  ok(face.left < 40 && face.top < 40, 'photos de ceux qui parlent placées en haut à gauche');
+  await B.v.screenshot({ path: path.join(__dirname, 'overlay.png') });
+  ok(await B.p.locator('#opts, #optChat, #optFaces, #ptt').count() === 0, 'aucun réglage d\'affichage à faire dans le panneau');
   ok(errs.length === 0, 'aucune erreur JS' + (errs.length ? ' : ' + errs.join(' | ') : ''));
   await cA.close(); await cB.close();
 })();
