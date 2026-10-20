@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Faux direct</title></head>
+<body style="margin:0;background:#000">
+<video id="v" muted autoplay playsinline style="width:640px;height:360px"></video>
+<script src="/hls.min.js"></script>
+<script>
+// Faux direct type TF1 : HLS, morceaux de 2 s avec heure réelle (PROGRAM-DATE-TIME), lecteur hls.js.
+const q = new URLSearchParams(location.search), v = document.getElementById('v');
+const hls = new Hls({ liveSyncDuration: +(q.get('lat') || 6), liveMaxLatencyDuration: q.get('max') ? +q.get('max') : undefined, enableWorker: true });
+hls.loadSource('/live.m3u8' + (q.get('pl') ? '?pl=' + q.get('pl') : '')); hls.attachMedia(v);
+window.__truth = () => hls.playingDate ? hls.playingDate.getTime() : null; // vérité terrain pour le test
+</script></body></html>

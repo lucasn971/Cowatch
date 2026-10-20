@@ -208,6 +208,10 @@ function broadcast(room, msg, exceptId, kind) {
 // ---------- Calage automatique du direct ----------
 // Chaque lecteur envoie sa position (= heure réelle de l'image affichée). L = heure serveur − position = son retard.
 // Le plus en retard sert de référence ; chacun des autres se met en pause de son avance. À chaque arrivée, et si ça dérive.
+// Lecteurs qui « reviennent tout seuls au direct » (ils refusent d'avoir plus de retard) : on les repère,
+// et c'est alors aux autres d'avancer jusqu'à eux au lieu qu'eux se mettent en pause.
+// Petits écarts (≤ 2 s) : le lecteur en avance ralentit légèrement (0,8×) au lieu de figer l'image.
+const holdFor = sec => (Math.abs(sec) <= 2 && sec > 0 ? sec / 0.2 : Math.abs(sec)) * 1000 + 4000;
 function autoSync(room) {
   const md = metaOf(room); if (md.mode !== 'live') return;
   const now = Date.now();
@@ -219,20 +223,25 @@ function autoSync(room) {
   const ok = ps.filter(c => Math.abs(c.clock.L - med) < 120); // au-delà : pas le même programme
   if (ok.length < 2) return;
   const Lmax = Math.max(...ok.map(c => c.clock.L));
-  const items = ok.map(c => ({ name: c.name, ahead: +(Lmax - c.clock.L).toFixed(2) }));
-  const spread = Math.max(...items.map(i => i.ahead));
+  const fixed = ok.filter(c => c.noBack);
+  const target = fixed.length ? Math.min(Lmax, ...fixed.map(c => c.clock.L)) : Lmax; // retard visé pour tout le salon
+  const items = ok.map(c => ({ name: c.name, ahead: +(target - c.clock.L).toFixed(2) }));
+  const spread = Math.max(...items.map(i => Math.abs(i.ahead)));
   if (reason === 'drift' && spread < 1.5) return;
   md.syncAgain = null; md.syncWho = null;
-  if (reason === 'drift') { // garde-fou : si le lecteur revient tout seul au direct, on ne boucle pas
+  if (reason === 'drift') { // garde-fou : si ça ne tient vraiment pas, on ne boucle pas
     md.drifts = (md.drifts || []).filter(t => now - t < 120000); md.drifts.push(now);
     if (md.drifts.length > 4) { if (!md.stuckSent) { md.stuckSent = true; broadcast(room, { t: 'autosync-stuck' }, null, 'salon'); } return; }
   }
-  let maxPause = 0;
-  for (const it of items) if (it.ahead > 0.6) {
-    maxPause = Math.max(maxPause, it.ahead);
-    for (const c of peersOf(room)) if (c.name === it.name) c.conn.send({ t: 'align', pauseFor: it.ahead, name: it.name, auto: true });
+  let hold = 0;
+  for (const it of items) if (Math.abs(it.ahead) > 0.3) {
+    hold = Math.max(hold, holdFor(it.ahead));
+    for (const c of peersOf(room)) if (c.name === it.name) {
+      c.conn.send({ t: 'align', pauseFor: it.ahead, name: it.name, auto: true });
+      if (c.kind === 'player' && c.clock) { c.expectL = c.clock.L + it.ahead; c.checkFrom = now + holdFor(it.ahead); }
+    }
   }
-  md.syncUntil = now + maxPause * 1000 + 4000;
+  md.syncUntil = now + hold;
   stats.autoSyncs++;
   broadcast(room, { t: 'autosync', reason, who, items, spread: +spread.toFixed(2) }, null, 'salon');
 }
@@ -292,7 +301,14 @@ function handle(conn) {
         if (me.kind !== 'player') return;
         const pos = Number(m.pos);
         if (!(pos > 1e8) || m.paused) { me.clock = null; return; }
-        me.clock = { L: Date.now() / 1000 - pos, at: Date.now() };
+        // Retard de l'image (s) ; médiane des 3 derniers relevés pour ignorer un relevé isolé.
+        const raw = Date.now() / 1000 - pos; me.Lhist = [...(me.Lhist || []).slice(-2), raw];
+        me.clock = { L: [...me.Lhist].sort((a, b) => a - b)[me.Lhist.length >> 1], at: Date.now() };
+        // Après un calage : s'il a perdu tout seul le retard qu'on lui a fait prendre, son lecteur revient au direct.
+        if (me.checkFrom && Date.now() > me.checkFrom && me.expectL != null) {
+          if (me.clock.L < me.expectL - 1.5 && !me.noBack) { me.noBack = true; stats.noBack = (stats.noBack || 0) + 1; }
+          if (Date.now() > me.checkFrom + 60000) { me.checkFrom = null; me.expectL = null; }
+        }
         if (me.needSync) { me.needSync = false; const md = metaOf(me.room); md.syncAgain = 'arrival'; md.syncWho = me.name; autoSync(me.room); }
         return;
       }

@@ -36,10 +36,29 @@
   // Calage automatique du direct : la position du lecteur Canal+ correspond à l'heure réelle de l'image
   // (secondes depuis 2015). On l'envoie toutes les 2 s ; le serveur compare les participants et met en pause ceux en avance.
   let clockTick = 0;
+  // Heure réelle de l'image affichée, en secondes. Trois sources, de la plus sûre à la moins sûre :
+  //  - « morceaux » : correspondance relevée par clock.js (heure de chaque morceau du direct ↔ temps de la vidéo) ;
+  //  - « lecteur »  : le lecteur compte déjà en heure réelle (Canal+) ;
+  //  - « dash »     : début du direct annoncé par le flux + temps de la vidéo.
+  function realPos(v) {
+    const t = v.currentTime, now = Date.now(), ok = w => Math.abs(now - w) < 15 * 60 * 1000;
+    try {
+      const map = JSON.parse(v.getAttribute('data-cowatch-map') || 'null');
+      if (map && map.length) {
+        let best = map[0]; for (const s of map) if (s.m <= t + 0.05) best = s;
+        const w = t * 1000 + best.off; if (ok(w)) return { pos: w / 1000, how: 'morceaux' };
+      }
+    } catch {}
+    const epoch = t + (Number(v.dataset.cowatchEpoch) || 0); // cowatchEpoch : uniquement pour les tests
+    if (ok(epoch * 1000)) return { pos: epoch, how: 'lecteur' };
+    const ast = Number(v.getAttribute('data-cowatch-ast'));
+    if (ast && ok(ast + t * 1000)) return { pos: ast / 1000 + t, how: 'dash' };
+    return { pos: t, how: 'aucune' };
+  }
   setInterval(() => {
     attach(findVideo());
     if (me && video && mode === 'live' && lastKind && ++clockTick % 2 === 0) {
-      const pos = video.currentTime + (Number(video.dataset.cowatchEpoch) || 0); // cowatchEpoch : uniquement pour les tests
+      const pos = realPos(video).pos;
       chrome.runtime.sendMessage({ cmd: 'clock', pos, paused: video.paused || Date.now() < ignoreUntil }).catch(() => {});
     }
     if (video && video.readyState > 0) { const k = isLive(video); if (k !== lastKind) { lastKind = k; chrome.runtime.sendMessage({ cmd: 'kind', live: k }).catch(() => {}); } }
@@ -76,9 +95,25 @@
 
   // Alignement en direct : on se met en pause le temps de son avance, puis on relance.
   // Fonctionne si le lecteur autorise la pause du direct (Canal+ : "contrôle du direct", à vérifier sur chaque chaîne).
+  // Calage du direct :
+  //  - en avance de plus de 2 s : pause le temps de l'avance, puis reprise ;
+  //  - en avance de 2 s ou moins : léger ralenti (0,8×), presque invisible, sans figer l'image ;
+  //  - en retard (sec < 0) : on avance d'autant (le lecteur d'en face ne peut pas prendre plus de retard).
   function align(sec, auto) {
-    if (!video || !(sec > 0)) return;
-    clearTimeout(alignTimer);
+    if (!video || !sec) return;
+    clearTimeout(alignTimer); video.playbackRate = 1;
+    if (sec < 0) {
+      let to = video.currentTime - sec;
+      try { const sk = video.seekable; if (sk.length) to = Math.min(to, sk.end(sk.length - 1) - 1); } catch {}
+      quiet(4000); video.currentTime = to;
+      if (auto) banner('Calage avec le salon…');
+      return;
+    }
+    if (auto && sec <= 2) {
+      const dur = sec / 0.2; quiet(dur * 1000 + 1500); video.playbackRate = 0.8;
+      alignTimer = setTimeout(() => { quiet(); video.playbackRate = 1; }, dur * 1000);
+      return;
+    }
     quiet(sec * 1000 + 1500);
     video.pause();
     banner(auto ? `Calage avec le salon… (${sec.toFixed(1)} s)` : `Alignement : pause ${sec.toFixed(1)} s`);
@@ -114,6 +149,7 @@
     const out = { frame: location.hostname + location.pathname.slice(0, 40), top: window.top === window, videos: all.length, inShadow: light, picked: video ? 'oui' : 'non', manifests: res, scripts };
     if (video) {
       const a = snap(video); await new Promise(r => setTimeout(r, 2000)); const b = snap(video);
+      const rp = realPos(video); out.clock = { how: rp.how, lagSec: rp.how === 'aucune' ? null : +((Date.now() / 1000) - rp.pos).toFixed(2), map: (video.getAttribute('data-cowatch-map') || '').length };
       out.sampleA = a; out.sampleB = b; out.advance = +((b.currentTime - a.currentTime) / ((b.t - a.t) / 1000)).toFixed(3);
     }
     return out;

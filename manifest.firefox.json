@@ -39,6 +39,22 @@
         "http://localhost/*"
       ],
       "js": [
+        "clock.js"
+      ],
+      "world": "MAIN",
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.canalplus.com/*",
+        "*://*.paramountplus.com/*",
+        "*://*.tf1.fr/*",
+        "*://*.primevideo.com/*",
+        "*://*.youtube.com/*",
+        "http://localhost/*"
+      ],
+      "js": [
         "player.js"
       ],
       "all_frames": true,
@@ -70,10 +86,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "salon@cowatch.app",
-      "strict_min_version": "121.0"
+      "strict_min_version": "128.0"
     },
     "gecko_android": {
-      "strict_min_version": "121.0"
+      "strict_min_version": "128.0"
     }
   },
   "commands": {
