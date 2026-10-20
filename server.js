@@ -197,7 +197,7 @@ function handle(conn) {
   const hb = setInterval(() => { if (!conn.alive) return conn.close(); conn.alive = false; conn.ping(); }, 25000);
   conn.onclose = () => {
     clearInterval(hb);
-    if (!me || me.replaced) return;
+    if (!me) return;
     const r = rooms.get(me.room); if (!r) return;
     r.delete(me.id);
     broadcast(me.room, { t: 'peer-left', id: me.id });
@@ -212,19 +212,12 @@ function handle(conn) {
       if (!rooms.has(room)) { rooms.set(room, new Map()); stats.roomsCreated++; }
       const r = rooms.get(room);
       const kind = m.kind === 'player' ? 'player' : 'salon';
-      // Même navigateur qui se reconnecte (double clic, coupure réseau) : on remplace l'ancienne connexion
-      // au lieu d'ajouter un « Lucas 2 » fantôme qui reçoit et renvoie tout en double.
-      const cid = typeof m.cid === 'string' ? m.cid.slice(0, 64) : '';
-      if (cid) for (const old of [...r.values()]) if (old.cid === cid && old.kind === kind) {
-        old.replaced = true; r.delete(old.id); broadcast(room, { t: 'peer-left', id: old.id }); old.conn.close();
-        stats.replaced = (stats.replaced || 0) + 1; if (kind === 'player') m.swapped = true;
-      }
       if (kind === 'salon' && [...r.values()].filter(c => c.kind === 'salon').length >= ROOM_MAX)
         return conn.send({ t: 'error', msg: `salon plein (${ROOM_MAX} max en prototype)` });
       let name = String(m.name || 'Invité').trim().slice(0, 24) || 'Invité';
       const taken = new Set([...r.values()].filter(c => c.kind === kind).map(c => c.name));
       if (taken.has(name)) { let i = 2; while (taken.has(`${name} ${i}`)) i++; name = `${name} ${i}`; }
-      me = { conn, id: crypto.randomBytes(4).toString('hex'), name, kind, room, cid };
+      me = { conn, id: crypto.randomBytes(4).toString('hex'), name, kind, room };
       if (kind === 'salon') { const av = cleanAvatar(m.avatar); if (av) me.avatar = av; }
       const others = peersOf(room).map(pub);
       r.set(me.id, me); stats.joins++;
@@ -233,7 +226,6 @@ function handle(conn) {
       const cr = calibResult(room); if (cr && kind === 'salon') conn.send(cr);
       if (kind === 'salon' && metaOf(room).chat.length) conn.send({ t: 'chat-history', items: metaOf(room).chat });
       broadcast(room, { t: 'peer-joined', peer: pub(me) }, me.id);
-      if (m.swapped) { const nh = hostOf(room); if (nh) broadcast(room, { t: 'host', id: nh.id }, null, 'player'); }
       if (kind === 'player' && h && h.id !== me.id) h.conn.send({ t: 'state-request' }); // le nouveau se cale sur le pilote
       if (kind === 'player') { me.needSync = true; me.joinedAt = Date.now(); } // en direct : recalage du salon dès sa 1re position
       return;

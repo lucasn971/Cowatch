@@ -9,16 +9,9 @@
   const S = { // état exposé au panneau
     server: '', code: null, me: null, tabId: null, mode: 'vod', muted: false, needMic: false, err: '',
     video: false, live: null, calib: null, autosync: null,
-    joining: false, wake: false, micErr: '', noAutoClock: false,
   };
-  // Identifiant stable de ce navigateur : si on se reconnecte, le serveur remplace l'ancienne présence (plus de « Lucas 2 »).
-  let CID = ''; try { CID = localStorage.getItem('cowatchCid') || ''; } catch {}
-  if (!CID) { CID = crypto.randomUUID(); try { localStorage.setItem('cowatchCid', CID); } catch {} }
   let wsS = null, wsP = null, localStream = null, lastWelcome = null, myAvatar = null;
-  let retryS = 0, retryP = 0, pingS = null, pingP = null, timerS = null, timerP = null;
-  let micReady = Promise.resolve(), iceReady = Promise.resolve(), outbox = [];
-  const goneTimers = new Map(); let lostTimer = null, lostShown = false; // annonces d'arrivée / départ sans bruit lors des micro-coupures
-  const seen = new Set(); // messages déjà affichés (évite les doublons après une reconnexion)
+  let retryS = 0, retryP = 0, pingS = null, pingP = null, reconnectingS = false;
   const peers = new Map(); // id -> {id, name, kind, avatar, pc, audio, state, speaking}
   const log = [];          // derniers messages (chat + système) pour réafficher le panneau à sa réouverture
 
@@ -54,29 +47,21 @@
       case 'hello': if (m.tabId != null && !S.code) S.tabId = m.tabId; snap(true); if (S.code) toTab({ t: 'ping-video' }); break;
       case 'join': return join(m);
       case 'leave': return leave();
-      case 'chat': { // si la connexion est coupée, le message part dès le retour
-        const v = String(m.text || '').trim(); if (!v || !S.code) break;
-        if (!sendS({ t: 'chat', text: v })) { outbox.push({ t: 'chat', text: v }); sys('Message en attente : reconnexion…'); }
-        break;
-      }
+      case 'chat': { const v = String(m.text || '').trim(); if (v) sendS({ t: 'chat', text: v }); break; }
       case 'reaction': sendS({ t: 'reaction', emoji: m.emoji }); break;
       case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
       case 'avatar': myAvatar = m.avatar || null; sendS({ t: 'avatar', avatar: myAvatar }); pushRoster(); break;
       case 'calibStart': sendS({ t: 'calib-start', label: 'le score change à l\'écran (ou le prochain coup de sifflet)' }); break;
       case 'top': if (S.calib && !S.calib.myTop) { S.calib.myTop = true; sendS({ t: 'top', id: S.calib.id }); snap(); } break;
       case 'align': sendS({ t: 'align' }); break;
-      case 'micGranted': if (S.code && !localStream) reconnectWithMic(); break;
+      case 'micGranted': if (S.code) reconnectWithMic(); break;
     }
   }
 
   // ---------- Messages venant de l'onglet (content script) ----------
   function fromTab(m) {
     if (m.cmd === 'sync') sendP({ t: 'sync', action: m.action, time: m.time, playing: m.playing, rate: m.rate });
-    if (m.cmd === 'clock') {
-      sendP({ t: 'clock', pos: m.pos, paused: m.paused });
-      // Le calage automatique a besoin de l'heure réelle de l'image (Canal+ la donne, TF1 non).
-      const no = !(Number(m.pos) > 1e8); if (no !== S.noAutoClock) { S.noAutoClock = no; snap(); }
-    }
+    if (m.cmd === 'clock') sendP({ t: 'clock', pos: m.pos, paused: m.paused });
     if (m.cmd === 'hello' && lastWelcome) { toTab(lastWelcome); pushRoster(); }
     if (m.cmd === 'video') { S.video = !!m.found; snap(); }
     if (m.cmd === 'kind') { S.live = !!m.live; autoMode(); snap(); }
@@ -94,110 +79,70 @@
 
   // ---------- Salon ----------
   async function join(m) {
-    const code = String(m.code || '').toUpperCase();
-    if (!code) return;
-    if (S.code === code && S.me) { snap(true); return; } // déjà dans ce salon (ou en train d'y entrer) : on ignore le double clic
-    if (S.code) leave(true);
     S.server = m.server; S.tabId = m.tabId ?? S.tabId; myAvatar = m.avatar || null; S.err = '';
-    S.me = { name: m.name }; S.code = code; S.joining = true; S.wake = false;
-    retryS = retryP = 0; outbox = []; snap();
-    // Micro et serveurs de voix en parallèle : la connexion au salon n'attend pas.
-    micReady = getMic();
-    iceReady = Promise.race([
-      fetch(S.server.replace(/\/$/, '') + '/ice').then(r => r.json()).then(j => { if (j.iceServers) ICE = j.iceServers; }).catch(() => {}),
-      new Promise(r => setTimeout(r, 6000)),
-    ]);
-    connectSalon();
+    S.me = { name: m.name }; S.code = String(m.code).toUpperCase();
+    await getMic();
+    try { const j = await (await fetch(S.server.replace(/\/$/, '') + '/ice')).json(); if (j.iceServers) ICE = j.iceServers; } catch {}
+    connectSalon(); snap();
   }
-  function closeWs(ws) { if (!ws) return; ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null; try { ws.close(); } catch {} }
-  function leave(quiet) {
-    S.code = null; clearInterval(pingS); clearInterval(pingP); clearTimeout(timerS); clearTimeout(timerP);
-    closeWs(wsS); closeWs(wsP); wsS = wsP = null;
-    peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); peers.clear(); log.length = 0; seen.clear(); outbox = [];
-    goneTimers.forEach(clearTimeout); goneTimers.clear(); clearTimeout(lostTimer); lostShown = false;
+  function leave() {
+    S.code = null; clearInterval(pingS); clearInterval(pingP); wsS?.close(); wsP?.close();
+    peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); peers.clear(); log.length = 0;
     localStream?.getTracks().forEach(t => t.stop()); localStream = null;
     toTab({ t: 'disconnected' });
-    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false, micErr: '', joining: false, wake: false });
-    lastWelcome = null; if (!quiet) snap(true);
-    // Le moteur reste ouvert : on peut recréer ou rejoindre un salon tout de suite.
+    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false });
+    lastWelcome = null; snap(true);
+    if (OFFSCREEN) chrome.runtime.sendMessage({ to: 'bg', cmd: 'engineIdle' }).catch(() => {});
   }
   async function getMic() {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      S.needMic = false; S.micErr = '';
-    } catch (e) { localStream = null; S.needMic = true; S.micErr = (e && e.name) || 'Error'; }
+      S.needMic = false;
+    } catch { localStream = null; S.needMic = true; }
     snap();
   }
   async function reconnectWithMic() {
-    micReady = getMic(); await micReady; if (!localStream || !S.me?.id) return;
+    await getMic(); if (!localStream) return;
     for (const [id, p] of peers) if (p.kind === 'salon' && id !== S.me.id) { p.pc?.close(); p.pc = null; await call(id); }
     watchLevel(S.me.id, localStream); applyMic(); sys('Micro activé');
   }
 
   const wsUrl = () => { const u = new URL(S.server); u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'; u.pathname = '/'; return u.toString(); };
-  const sendS = o => { if (wsS?.readyState !== 1 || !wsS.ok) return false; wsS.send(JSON.stringify(o)); return true; };
-  const sendP = o => { if (wsP?.readyState !== 1) return false; wsP.send(JSON.stringify(o)); return true; };
-  const backoff = n => Math.min(1000 * 2 ** n, 8000);
-  function addMsg(it) { // un message n'est affiché qu'une fois, même renvoyé après une reconnexion
-    const k = `${it.at}|${it.name}|${it.text}`; if (seen.has(k)) return; seen.add(k);
-    addLog({ kind: 'msg', name: it.name, text: it.text, at: it.at || Date.now() });
-  }
+  const sendS = o => wsS?.readyState === 1 && wsS.send(JSON.stringify(o));
+  const sendP = o => wsP?.readyState === 1 && wsP.send(JSON.stringify(o));
 
   function connectSalon() {
-    clearTimeout(timerS); closeWs(wsS);
-    const ws = wsS = new WebSocket(wsUrl());
-    // Serveur gratuit endormi : il met jusqu'à ~30 s à se réveiller. On le dit au lieu de rester muet.
-    const slow = setTimeout(() => { if (ws === wsS && S.joining) { S.wake = true; snap(); } }, 2500);
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'salon', cid: CID, avatar: myAvatar || undefined }));
-      clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000);
+    wsS = new WebSocket(wsUrl());
+    wsS.onopen = () => { sendS({ t: 'join', room: S.code, name: S.me.name, kind: 'salon', avatar: myAvatar || undefined }); clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000); };
+    wsS.onerror = () => { if (!S.me?.id) { S.err = 'Le serveur se réveille, nouvel essai automatique…'; snap(); } };
+    wsS.onclose = () => {
+      clearInterval(pingS); if (!S.code) return;
+      const d = Math.min(1000 * 2 ** retryS++, 10000); reconnectingS = !!S.me?.id;
+      if (S.me?.id) sys(`Connexion perdue, reconnexion dans ${Math.round(d / 1000)} s…`);
+      setTimeout(() => { if (S.code) connectSalon(); }, d);
     };
-    ws.onclose = () => {
-      clearTimeout(slow); clearInterval(pingS); if (ws !== wsS || !S.code) return;
-      const d = backoff(retryS++);
-      if (S.me?.id && !S.joining) {
-        S.joining = true; snap();
-        clearTimeout(lostTimer); lostTimer = setTimeout(() => { if (S.joining && S.code) { lostShown = true; sys('Connexion perdue, reconnexion…'); } }, 4000);
-      }
-      timerS = setTimeout(() => { if (S.code && ws === wsS) connectSalon(); }, d);
-    };
-    ws.onmessage = async ev => {
-      if (ws !== wsS) return;
+    wsS.onmessage = async ev => {
       const m = JSON.parse(ev.data);
-      if (m.t === 'error') { S.err = m.msg; S.joining = false; snap(); return; }
+      if (m.t === 'error') { S.err = m.msg; snap(); return; }
       if (m.t === 'welcome') {
-        clearTimeout(slow); retryS = 0; S.err = ''; S.wake = false; ws.ok = true;
-        const first = !S.me.id, back = !first && S.joining; S.joining = false;
-        // Liste des présents donnée par le serveur : on repart d'elle (pas de fantôme après une reconnexion).
-        peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); peers.clear();
+        retryS = 0; S.err = '';
+        if (reconnectingS) { peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); peers.clear(); reconnectingS = false; }
+        const first = !S.me.id;
         S.me.id = m.id; S.me.name = m.name || S.me.name; S.code = m.room;
-        if (!wsP) connectPlayer();
+        if (first) connectPlayer();
         peers.set(S.me.id, { id: S.me.id, name: S.me.name, kind: 'salon', avatar: myAvatar, self: true, state: 'connected' });
-        for (const p of m.peers) peers.set(p.id, { ...p });
+        if (localStream) { watchLevel(S.me.id, localStream); applyMic(); }
+        for (const p of m.peers) { peers.set(p.id, { ...p }); if (p.kind === 'salon') await call(p.id); }
         S.mode = m.mode === 'live' ? 'live' : 'vod';
-        clearTimeout(lostTimer);
-        if (first) sys(`Tu es dans le salon ${S.code}.`); else if (back && lostShown) sys('Reconnecté ✓');
-        lostShown = false;
+        if (first) sys(`Tu es dans le salon ${S.code}. Envoie l'invitation à tes amis.`);
         pushRoster(); autoMode(); snap(true);
-        const q = outbox; outbox = []; q.forEach(sendS);
-        await micReady; if (localStream) { watchLevel(S.me.id, localStream); applyMic(); }
-        for (const p of m.peers) if (p.kind === 'salon' && peers.has(p.id)) await call(p.id);
-        return;
       }
-      if (m.t === 'peer-joined') {
-        peers.set(m.peer.id, { ...m.peer });
-        if (m.peer.kind === 'salon') {
-          const t = goneTimers.get(m.peer.name); // parti puis revenu en quelques secondes : on ne dit rien
-          if (t) { clearTimeout(t); goneTimers.delete(m.peer.name); } else sys(`${m.peer.name} est arrivé`);
-          pushRoster();
-        }
-        snap();
-      }
+      if (m.t === 'peer-joined') { peers.set(m.peer.id, { ...m.peer }); if (m.peer.kind === 'salon') { sys(`${m.peer.name} est arrivé`); pushRoster(); } snap(); }
       if (m.t === 'avatar') { const p = peers.get(m.id); if (p) { p.avatar = m.avatar || null; pushRoster(); snap(); } }
-      if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.audio?.remove(); peers.delete(m.id); if (p.kind === 'salon') { const n = p.name; clearTimeout(goneTimers.get(n)); goneTimers.set(n, setTimeout(() => { goneTimers.delete(n); sys(`${n} est parti`); }, 10000)); pushRoster(); } snap(); } }
+      if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.audio?.remove(); peers.delete(m.id); if (p.kind === 'salon') { sys(`${p.name} est parti`); pushRoster(); } snap(); } }
       if (m.t === 'signal') await onSignal(m.from, m.data);
-      if (m.t === 'chat') addMsg(m);
-      if (m.t === 'chat-history') m.items.forEach(addMsg);
+      if (m.t === 'chat') addLog({ kind: 'msg', name: m.name, text: m.text, at: m.at || Date.now() });
+      if (m.t === 'chat-history') m.items.forEach(it => addLog({ kind: 'msg', name: it.name, text: it.text, at: it.at }));
       if (m.t === 'reaction') addLog({ kind: 'msg', name: m.name, text: m.emoji, at: Date.now() });
       if (m.t === 'mode') { S.mode = m.mode === 'live' ? 'live' : 'vod'; sys(S.mode === 'live' ? 'Match en direct : calage automatique activé.' : 'Série / replay : lecture partagée.'); snap(); }
       if (m.t === 'calib-start') { S.calib = { id: m.id, label: m.label, myTop: false, items: [], msg: `Appuie quand tu vois : ${m.label}` }; snap(); }
@@ -218,12 +163,10 @@
     };
   }
   function connectPlayer() {
-    clearTimeout(timerP); closeWs(wsP);
-    const ws = wsP = new WebSocket(wsUrl());
-    ws.onopen = () => { ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'player', cid: CID })); clearInterval(pingP); pingP = setInterval(() => sendP({ t: 'ping' }), 20000); };
-    ws.onclose = () => { clearInterval(pingP); if (ws !== wsP || !S.code) return; timerP = setTimeout(() => { if (S.code && ws === wsP) connectPlayer(); }, backoff(retryP++)); };
-    ws.onmessage = ev => {
-      if (ws !== wsP) return;
+    wsP = new WebSocket(wsUrl());
+    wsP.onopen = () => { sendP({ t: 'join', room: S.code, name: S.me.name, kind: 'player' }); clearInterval(pingP); pingP = setInterval(() => sendP({ t: 'ping' }), 20000); };
+    wsP.onclose = () => { clearInterval(pingP); if (!S.code) return; const d = Math.min(1000 * 2 ** retryP++, 10000); setTimeout(() => { if (S.code) connectPlayer(); }, d); };
+    wsP.onmessage = ev => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode }; toTab(lastWelcome); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
@@ -250,20 +193,15 @@
     };
     peers.get(id).pc = pc; return pc;
   }
-  async function call(id) {
-    await Promise.all([micReady, iceReady]); if (!peers.has(id)) return;
-    const pc = makePC(id); await pc.setLocalDescription(await pc.createOffer()); sendS({ t: 'signal', to: id, data: { sdp: pc.localDescription } }); }
+  async function call(id) { const pc = makePC(id); await pc.setLocalDescription(await pc.createOffer()); sendS({ t: 'signal', to: id, data: { sdp: pc.localDescription } }); }
   async function onSignal(from, data) {
     const p = peers.get(from); if (!p) return;
     if (data.sdp) {
-      if (data.sdp.type === 'offer') { await Promise.all([micReady, iceReady]); if (!peers.has(from)) return; if (p.pc) { p.pc.close(); p.pc = null; } }
+      if (data.sdp.type === 'offer' && p.pc) { p.pc.close(); p.pc = null; }
       const pc = p.pc || makePC(from);
       await pc.setRemoteDescription(data.sdp);
       if (data.sdp.type === 'offer') { await pc.setLocalDescription(await pc.createAnswer()); sendS({ t: 'signal', to: from, data: { sdp: pc.localDescription } }); }
-      const q = p.pendingIce || []; p.pendingIce = []; for (const c of q) { try { await pc.addIceCandidate(c); } catch {} }
-    } else if (data.ice) { // candidats arrivés avant la description : gardés de côté puis appliqués
-      if (p.pc && p.pc.remoteDescription) { try { await p.pc.addIceCandidate(data.ice); } catch {} } else (p.pendingIce = p.pendingIce || []).push(data.ice);
-    }
+    } else if (data.ice && p.pc) { try { await p.pc.addIceCandidate(data.ice); } catch {} }
   }
   let actx;
   const watched = new Map();
