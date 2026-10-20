@@ -41,15 +41,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(!(await paused(A)), 'Lucas reprend tout seul après ~3 s');
   ok((await A.p.textContent('#autoState')).includes('Calé automatiquement'), `panneau : ${await A.p.textContent('#autoState')}`);
   ok((await B.p.textContent('#chat')).includes('Kilian est arrivé : salon recalé'), 'message dans le chat : salon recalé à l\'arrivée');
-  // Nora arrive avec 2 s de retard sur tout le monde : Lucas ET Kilian se calent sur elle
+  // Nora arrive avec 2 s de retard sur tout le monde : petit écart => Lucas ET Kilian ralentissent (0,8×) sans figer l'image
   await sleep(1500);
   const C = await person('/tmp/claude-0/sc', 'nora', 'Nora', -2);
   await C.p.fill('#codeIn', code); await C.p.click('#joinBtn'); await C.p.waitForSelector('#room:not(.hidden)');
+  const rate = x => x.v.evaluate(() => document.querySelector('video').playbackRate);
   let both = false;
-  for (let i = 0; i < 40 && !both; i++) { both = (await paused(A)) && (await paused(B)); if (!both) await sleep(200); }
-  ok(both && !(await paused(C)), 'arrivée de Nora (2 s de retard) : Lucas et Kilian se calent sur elle');
-  await sleep(3500);
-  ok(!(await paused(A)) && !(await paused(B)), 'tout le monde reprend : salon calé');
+  for (let i = 0; i < 40 && !both; i++) { both = (await rate(A)) < 1 && (await rate(B)) < 1; if (!both) await sleep(200); }
+  ok(both && !(await paused(A)) && !(await paused(B)) && (await rate(C)) === 1, 'arrivée de Nora (2 s de retard) : Lucas et Kilian ralentissent légèrement, sans pause');
+  await sleep(11000);
+  ok((await rate(A)) === 1 && (await rate(B)) === 1 && !(await paused(A)) && !(await paused(B)), 'tout le monde revient à vitesse normale : salon calé');
 
   // ---------- Plein écran : le panneau se range, la vidéo occupe tout, la voix continue ----------
   await B.v.bringToFront();
