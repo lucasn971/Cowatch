@@ -6,6 +6,7 @@ const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
+let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
 
 // ---------- Lien avec le moteur ----------
 function ui(ev) {
@@ -18,6 +19,7 @@ function engine(cmd) {
   return chrome.runtime.sendMessage({ to: 'engine', ...cmd }).catch(() => {});
 }
 async function startEngine() {
+  if (engineLocal) return;
   const r = await chrome.runtime.sendMessage({ to: 'bg', cmd: 'ensureEngine' }).catch(() => null);
   if (r && r.ok) return;
   // Pas de document caché possible (Firefox, Opera) : le moteur tourne dans le panneau.
@@ -30,6 +32,7 @@ async function startEngine() {
   const saved = await chrome.storage.local.get(['name', 'server', 'avatar']);
   if (saved.server) server = saved.server;
   if (params.get('server')) server = params.get('server');
+  fetch(server.replace(/\/$/, '') + '/health').catch(() => {}); // réveille le serveur gratuit pendant qu'on tape son pseudo
   $('#name').value = saved.name || ''; myAvatar = saved.avatar || null; renderMyAvatar();
   tabId = params.get('tab') ? Number(params.get('tab')) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   for (const em of EMOJIS) { const b = document.createElement('button'); b.textContent = em; b.onclick = () => engine({ cmd: 'reaction', emoji: em }); $('#react').append(b); }
@@ -44,22 +47,66 @@ async function startEngine() {
   if (pendingJoin && Date.now() - pendingJoin.at < 30 * 60 * 1000 && !(st && st.inRoom)) {
     $('#codeIn').value = pendingJoin.code;
     await chrome.storage.local.remove('pendingJoin');
-    if ($('#name').value.trim()) join(pendingJoin.code);
-    else { $('#err').textContent = 'Choisis un pseudo puis clique sur Rejoindre.'; $('#name').focus(); }
+    if ($('#name').value.trim()) join(pendingJoin.code, 'join');
+    else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
   }
 })();
 
 function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
 // Accepte le lien d'invitation complet (…/j/CODE?u=…) ou le code seul.
 function codeFrom(v) { v = (v || '').trim(); const m = v.match(/\/(?:j|s)\/([A-Za-z0-9-]{3,24})/); return (m ? m[1] : /^[A-Za-z0-9-]{3,24}$/.test(v) ? v : '').toUpperCase(); }
-$('#create').onclick = () => join(randomCode());
-$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c); else $('#err').textContent = 'Colle le lien d\'invitation reçu (ou le code du salon).'; };
+function showErr(msg, field) {
+  localErr = msg; $('#err').textContent = msg;
+  if (field) { $(field).classList.add('bad'); $(field).focus(); }
+}
+$('#name').addEventListener('input', () => { $('#name').classList.remove('bad'); if (localErr) showErr(''); });
+$('#codeIn').addEventListener('input', () => { $('#codeIn').classList.remove('bad'); if (localErr) showErr(''); });
+$('#create').onclick = () => {
+  if (busy) return;
+  if (!$('#name').value.trim()) return showErr('Choisis un pseudo.', '#name');
+  const code = randomCode();
+  join(code, 'create', copyInvite(code)); // le lien est copié tout de suite : il n'y a plus qu'à le coller à ses amis
+};
+$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c, 'join'); else showErr('Colle le lien d\'invitation reçu (ou le code du salon).', '#codeIn'); };
 $('#codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
-async function join(code) {
+$('#name').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#codeIn').value.trim() ? $('#joinBtn') : $('#create')).click(); });
+function join(code, from, pre) {
+  if (busy) return false; // déjà en cours : un 2e clic ne crée pas un 2e salon
   const name = $('#name').value.trim();
-  if (!name) { $('#err').textContent = 'Choisis un pseudo.'; $('#name').focus(); return; }
-  await chrome.storage.local.set({ name }); $('#err').textContent = '';
-  engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId });
+  if (!name) { showErr('Choisis un pseudo.', '#name'); return false; }
+  showErr(''); busy = from; renderBusy();
+  clearTimeout(busyTimer);
+  busyTimer = setTimeout(() => { if (busy && !(st && st.inRoom)) { busy = null; showErr('Le serveur ne répond pas. Vérifie ta connexion Internet ; Cowatch réessaie tout seul.'); renderBusy(); } }, 60000);
+  Promise.resolve(pre).catch(() => {}).then(askMicIfNeeded); // après la copie du lien (la fenêtre du micro prend le focus)
+  (async () => {
+    await chrome.storage.local.set({ name });
+    await startEngine();
+    await engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId });
+  })();
+  return true;
+}
+// Micro : la première fois, une petite fenêtre demande l'autorisation (le panneau ne peut pas afficher la question lui-même).
+async function askMicIfNeeded() {
+  let state = 'prompt';
+  try { state = (await navigator.permissions.query({ name: 'microphone' })).state; } catch {}
+  if (state === 'granted') return;
+  openMicPage();
+}
+function openMicPage() {
+  const url = chrome.runtime.getURL('mic.html');
+  if (chrome.windows?.create) chrome.windows.create({ url, type: 'popup', width: 440, height: 320, focused: true }).catch(() => chrome.tabs.create({ url }));
+  else chrome.tabs.create({ url });
+}
+function renderBusy() {
+  const joining = st && st.joining && !st.inRoom;
+  if (busy && st && !st.joining && !st.inRoom && st.err) busy = null; // échec : on rend la main
+  if (st && st.inRoom) { busy = null; clearTimeout(busyTimer); }
+  for (const [id, label] of [['create', 'Créer un salon'], ['joinBtn', 'Rejoindre']]) {
+    const b = $('#' + id), mine = busy === (id === 'create' ? 'create' : 'join');
+    b.disabled = !!busy;
+    b.textContent = mine ? (st && st.wake ? 'Réveil du serveur… (≈ 30 s)' : 'Connexion…') : label;
+  }
+  if (!busy && joining) { $('#create').disabled = true; $('#create').textContent = st.wake ? 'Réveil du serveur… (≈ 30 s)' : 'Connexion…'; }
 }
 
 // ---------- Affichage ----------
@@ -71,10 +118,12 @@ function avatarEl(name, src) {
 function render() {
   if (!st) return;
   $('#playerStatus').textContent = st.video ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!st.video);
-  $('#err').textContent = st.err || '';
+  $('#err').textContent = localErr || st.err || '';
+  renderBusy();
   $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom);
   if (!st.inRoom) return;
   $('#code').textContent = st.code;
+  $('#invite').textContent = Date.now() - copiedAt < 6000 ? 'Lien copié ✓' : "Copier l'invitation";
   const box = $('#peers'); box.innerHTML = '';
   for (const p of st.peers) {
     const el = document.createElement('div'); el.className = 'peer' + (p.self || p.state === 'connected' ? ' on' : '') + (p.speaking ? ' speaking' : '');
@@ -82,14 +131,23 @@ function render() {
     const n = document.createElement('span'); n.textContent = p.self ? p.name + ' (toi)' : p.name;
     el.append(avatarEl(p.name, p.avatar), n); box.append(el);
   }
-  $('#mute').textContent = st.muted ? 'Réactiver le micro' : 'Couper le micro';
-  $('#micFix').classList.toggle('hidden', !st.needMic);
+  // Un seul bouton micro : « Activer mon micro » tant qu'il n'est pas autorisé, sinon couper / réactiver.
+  $('#mute').textContent = st.needMic ? '🎤 Activer mon micro' : st.muted ? 'Réactiver le micro' : 'Couper le micro';
+  $('#mute').classList.toggle('need', !!st.needMic);
+  $('#micHelp').classList.toggle('hidden', !st.needMic || !st.micErr);
+  $('#micHelp').textContent = st.micErr === 'NotFoundError' ? 'Aucun micro trouvé sur cet ordinateur. Branche un casque ou des écouteurs avec micro.'
+    : st.micErr === 'NotReadableError' ? 'Le micro est déjà utilisé par une autre application (Zoom, Teams, FaceTime…). Ferme-la puis clique sur « Activer mon micro ».'
+    : 'Micro bloqué. Clique sur « Activer mon micro » et réponds « Autoriser ». Sur Mac, vérifie aussi Réglages Système › Confidentialité › Micro › Chrome.';
+  $('#net').textContent = st.joining ? 'Reconnexion…' : '';
   // Direct : calage automatique ; le calage manuel (TOP) reste disponible pour ceux qui regardent sur la TV.
   const live = st.mode === 'live';
   $('#calib').classList.toggle('hidden', !live);
   if (live) {
     const a = st.autosync;
-    $('#autoState').textContent = !a ? 'Calage automatique : en attente d\'un 2e lecteur…'
+    if (st.noAutoClock) $('#manual').open = true;
+    $('#autoState').style.color = st.noAutoClock ? 'var(--muted)' : 'var(--ok)';
+    $('#autoState').textContent = st.noAutoClock ? 'Calage automatique indisponible sur ce site : utilisez le TOP.'
+      : !a ? 'Calage automatique : en attente d\'un 2e lecteur…'
       : a.spread > 0.6 ? `Calé automatiquement ✓ (écart corrigé : ${a.spread.toFixed(1)} s)` : 'Calé automatiquement ✓';
     const c = st.calib;
     $('#top').classList.toggle('hidden', !!(!c || c.myTop || c.done));
@@ -137,8 +195,7 @@ $('#photoIn').onchange = async () => {
 };
 
 // ---------- Actions du salon ----------
-$('#mute').onclick = () => engine({ cmd: 'mute' });
-$('#micFix').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('mic.html') });
+$('#mute').onclick = () => { if (st && st.needMic) { openMicPage(); engine({ cmd: 'micGranted' }); } else engine({ cmd: 'mute' }); };
 function sendChat() { const v = $('#chatIn').value.trim(); if (!v) return; engine({ cmd: 'chat', text: v }); $('#chatIn').value = ''; }
 $('#send').onclick = sendChat;
 $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
@@ -146,13 +203,18 @@ $('#cStart').onclick = () => engine({ cmd: 'calibStart' });
 $('#top').onclick = () => engine({ cmd: 'top' });
 $('#align').onclick = () => engine({ cmd: 'align' });
 $('#leave').onclick = () => engine({ cmd: 'leave' });
-$('#invite').onclick = async () => {
+async function inviteLink(code) {
   let target = '';
   try { const tab = await chrome.tabs.get(tabId); target = tab.url || ''; } catch {}
-  const link = `${server.replace(/\/$/, '')}/j/${st.code}` + (target ? `?u=${encodeURIComponent(target)}` : '');
-  try { await navigator.clipboard.writeText(link); $('#invite').textContent = 'Lien copié ✓'; setTimeout(() => $('#invite').textContent = "Copier l'invitation", 2000); }
-  catch { addLog({ kind: 'sys', text: `Lien d'invitation : ${link}` }); }
-};
+  return `${server.replace(/\/$/, '')}/j/${code}` + (target ? `?u=${encodeURIComponent(target)}` : '');
+}
+async function copyInvite(code) {
+  const link = await inviteLink(code);
+  try { await navigator.clipboard.writeText(link); } catch { return false; }
+  copiedAt = Date.now(); render(); setTimeout(render, 6100);
+  return true;
+}
+$('#invite').onclick = async () => { if (!(await copyInvite(st.code))) addLog({ kind: 'sys', text: `Lien d'invitation : ${await inviteLink(st.code)}` }); };
 
 // ---------- Plein écran : la fenêtre passe en plein écran, la vidéo occupe tout, le panneau se range ----------
 $('#full').onclick = async () => {
