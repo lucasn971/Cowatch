@@ -26,22 +26,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     return { c, v, p, sw };
   }
   const paused = x => x.v.evaluate(() => document.querySelector('video').paused);
-  // Lucas a 3 s d'avance sur Kilian
-  const A = await person('/tmp/claude-0/sa', 'lucas', 'Lucas', 3);
+  // Lucas a 5 s d'avance sur Kilian (au-delà de 3 s : pause)
+  const A = await person('/tmp/claude-0/sa', 'lucas', 'Lucas', 5);
   await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)');
   const code = await A.p.textContent('#code');
   const B = await person('/tmp/claude-0/sb', 'kilian', 'Kilian', 0);
   await B.p.fill('#codeIn', code); await B.p.click('#joinBtn'); await B.p.waitForSelector('#room:not(.hidden)');
   ok(await A.p.isVisible('#calib'), 'direct détecté tout seul : mode match');
-  // Kilian arrive : Lucas (en avance) doit se mettre en pause ~3 s, sans TOP
+  // Kilian arrive : Lucas (en avance) doit se mettre en pause ~5 s, sans TOP
   let pausedA = false;
   for (let i = 0; i < 40 && !pausedA; i++) { pausedA = await paused(A); if (!pausedA) await sleep(250); }
-  ok(pausedA && !(await paused(B)), 'arrivée de Kilian : Lucas (3 s d\'avance) mis en pause automatiquement, Kilian continue');
-  await sleep(3800);
-  ok(!(await paused(A)), 'Lucas reprend tout seul après ~3 s');
+  ok(pausedA && !(await paused(B)), 'arrivée de Kilian : Lucas (5 s d\'avance) mis en pause automatiquement, Kilian continue');
+  await sleep(5800);
+  ok(!(await paused(A)), 'Lucas reprend tout seul après ~5 s');
   ok((await A.p.textContent('#autoState')).includes('Calé automatiquement'), `panneau : ${await A.p.textContent('#autoState')}`);
   ok((await B.p.textContent('#chat')).includes('Kilian est arrivé : salon recalé'), 'message dans le chat : salon recalé à l\'arrivée');
-  // Nora arrive avec 2 s de retard sur tout le monde : petit écart => Lucas ET Kilian ralentissent (0,8×) sans figer l'image
+  // Nora arrive avec 2 s de retard sur tout le monde : petit écart => Lucas ET Kilian ralentissent (0,75×) sans figer l'image
   await sleep(1500);
   const C = await person('/tmp/claude-0/sc', 'nora', 'Nora', -2);
   await C.p.fill('#codeIn', code); await C.p.click('#joinBtn'); await C.p.waitForSelector('#room:not(.hidden)');
@@ -49,7 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   let both = false;
   for (let i = 0; i < 40 && !both; i++) { both = (await rate(A)) < 1 && (await rate(B)) < 1; if (!both) await sleep(200); }
   ok(both && !(await paused(A)) && !(await paused(B)) && (await rate(C)) === 1, 'arrivée de Nora (2 s de retard) : Lucas et Kilian ralentissent légèrement, sans pause');
-  await sleep(11000);
+  await sleep(12000);
   ok((await rate(A)) === 1 && (await rate(B)) === 1 && !(await paused(A)) && !(await paused(B)), 'tout le monde revient à vitesse normale : salon calé');
 
   // ---------- Plein écran : le panneau se range, la vidéo occupe tout, la voix continue ----------

@@ -96,8 +96,8 @@
   // Alignement en direct : on se met en pause le temps de son avance, puis on relance.
   // Fonctionne si le lecteur autorise la pause du direct (Canal+ : "contrôle du direct", à vérifier sur chaque chaîne).
   // Calage du direct :
-  //  - en avance de plus de 2 s : pause le temps de l'avance, puis reprise ;
-  //  - en avance de 2 s ou moins : léger ralenti (0,8×), presque invisible, sans figer l'image ;
+  //  - en avance de plus de 3 s : pause le temps de l'avance, puis reprise ;
+  //  - en avance de 3 s ou moins : léger ralenti (0,75×), presque invisible, sans figer l'image ;
   //  - en retard (sec < 0) : on avance d'autant (le lecteur d'en face ne peut pas prendre plus de retard).
   function align(sec, auto) {
     if (!video || !sec) return;
@@ -109,8 +109,8 @@
       if (auto) banner('Calage avec le salon…');
       return;
     }
-    if (auto && sec <= 2) {
-      const dur = sec / 0.2; quiet(dur * 1000 + 1500); video.playbackRate = 0.8;
+    if (auto && sec <= 3) {
+      const dur = sec / 0.25; quiet(dur * 1000 + 1500); video.playbackRate = 0.75;
       alignTimer = setTimeout(() => { quiet(); video.playbackRate = 1; }, dur * 1000);
       return;
     }

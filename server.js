@@ -210,8 +210,8 @@ function broadcast(room, msg, exceptId, kind) {
 // Le plus en retard sert de référence ; chacun des autres se met en pause de son avance. À chaque arrivée, et si ça dérive.
 // Lecteurs qui « reviennent tout seuls au direct » (ils refusent d'avoir plus de retard) : on les repère,
 // et c'est alors aux autres d'avancer jusqu'à eux au lieu qu'eux se mettent en pause.
-// Petits écarts (≤ 2 s) : le lecteur en avance ralentit légèrement (0,8×) au lieu de figer l'image.
-const holdFor = sec => (Math.abs(sec) <= 2 && sec > 0 ? sec / 0.2 : Math.abs(sec)) * 1000 + 4000;
+// Petits écarts (≤ 3 s) : le lecteur en avance ralentit légèrement (0,75×) au lieu de figer l'image.
+const holdFor = sec => (sec > 0 && sec <= 3 ? sec / 0.25 : Math.abs(sec)) * 1000 + 4000;
 function autoSync(room) {
   const md = metaOf(room); if (md.mode !== 'live') return;
   const now = Date.now();
