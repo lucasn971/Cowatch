@@ -196,7 +196,9 @@
     pic.style.width = pic.style.height = '52px'; pic.style.borderRadius = '50%'; pic.style.boxShadow = '0 0 0 3px #ffd23c,0 6px 18px rgba(0,0,0,.45)';
     w.append(pic, lab); return w;
   }
+  const speakingNow = new Set(); // qui parle en ce moment (gardé même quand ce cadre n'affiche rien)
   function showFace(id, on) {
+    if (on) speakingNow.add(id); else speakingNow.delete(id);
     const box = faceLayer(); if (!box) return;
     const p = roster.get(id); if (!p) return;
     let el = box.querySelector(`[data-id="${CSS.escape(id)}"]`);
@@ -240,7 +242,7 @@
     setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
   }
   document.addEventListener('fullscreenchange', () => {
-    faceLayer(); chatLayer(); renderMuted(); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
+    faceLayer(); chatLayer(); renderMuted(); speakingNow.forEach(id => showFace(id, true)); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
     renderReopen();
   });
 
