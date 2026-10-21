@@ -5,7 +5,7 @@
 //  - Opera et navigateurs sans panneau : petite fenêtre à part ;
 //  - Firefox Android : nouvel onglet (pas de fenêtre ni de barre latérale sur mobile).
 // Le « moteur » (voix, connexions) tourne dans un document caché (offscreen) quand le navigateur le permet :
-// on peut alors fermer le panneau (plein écran) sans couper la voix.
+// on peut alors fermer le panneau sans couper la voix.
 const B = globalThis.browser;
 const hasSidePanel = !!(chrome.sidePanel && chrome.sidePanel.setPanelBehavior);
 const hasSidebar = !!(B && B.sidebarAction && B.sidebarAction.open);
@@ -41,20 +41,17 @@ async function ensureEngine() {
   await creating; return true;
 }
 
-// Plein écran Cowatch : la fenêtre passe en plein écran, le lecteur occupe tout l'écran, le panneau se range.
-async function immersive(tabId, on) {
-  const tab = await chrome.tabs.get(tabId);
-  if (on) {
-    const win = await chrome.windows.get(tab.windowId);
-    await chrome.storage.session?.set({ ['win' + tab.windowId]: win.state }).catch(() => {});
-    if (win.state !== 'fullscreen') await chrome.windows.update(tab.windowId, { state: 'fullscreen' }).catch(() => {});
-    await chrome.tabs.update(tabId, { active: true }).catch(() => {});
-  } else {
-    const k = 'win' + tab.windowId; const st = (await chrome.storage.session?.get(k).catch(() => ({})))?.[k];
-    await chrome.windows.update(tab.windowId, { state: st && st !== 'fullscreen' ? st : 'normal' }).catch(() => {});
-  }
-  await chrome.tabs.sendMessage(tabId, { t: 'immersive', on }).catch(() => {});
-}
+// Panneau ouvert ou fermé, par onglet : la page affiche une languette « 💬 Cowatch » quand il est fermé.
+const openPanels = new Set();
+chrome.runtime.onConnect.addListener(port => {
+  const m = /^panel:(\d+)$/.exec(port.name || ''); if (!m) return;
+  const tabId = Number(m[1]);
+  openPanels.add(tabId); chrome.tabs.sendMessage(tabId, { t: 'panel', open: true }).catch(() => {});
+  port.onDisconnect.addListener(() => {
+    openPanels.delete(tabId);
+    chrome.tabs.sendMessage(tabId, { t: 'panel', open: false }).catch(() => {});
+  });
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   // Lien d'invitation : on mémorise le salon à rejoindre (30 min), le panneau le reprendra à son ouverture.
@@ -67,17 +64,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     openPanelFor(sender.tab).then(where => reply({ ok: true, where })).catch(e => reply({ ok: false, error: String(e) }));
     return true;
   }
+  if (msg.cmd === 'panelState' && sender.tab) { reply({ open: openPanels.has(sender.tab.id) }); return; }
   if (msg.to !== 'bg') return;
   if (msg.cmd === 'ensureEngine') { ensureEngine().then(ok => reply({ ok })).catch(e => reply({ ok: false, error: String(e) })); return true; }
   if (msg.cmd === 'relay') { chrome.tabs.sendMessage(msg.tabId, msg.m).catch(() => {}); return; }
   if (msg.cmd === 'engineIdle') { chrome.offscreen?.closeDocument?.().catch(() => {}); return; }
-  if (msg.cmd === 'immersive') { immersive(msg.tabId, true).then(() => reply({ ok: true })).catch(e => reply({ ok: false, error: String(e) })); return true; }
-  if (msg.cmd === 'exitImmersive' && sender.tab) {
-    // Clic ou touche Échap dans la page : geste utilisateur => on peut rouvrir le panneau.
-    if (hasSidePanel) chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
-    immersive(sender.tab.id, false).then(() => reply({ ok: true })).catch(() => reply({ ok: false }));
-    return true;
-  }
 });
 
 // Raccourci clavier (Alt+Maj+M) : couper / réactiver le micro, même en plein écran.

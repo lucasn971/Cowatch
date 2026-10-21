@@ -40,6 +40,9 @@ async function startEngine() {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
   });
+  // Signale à la page que le panneau est ouvert (sa languette « 💬 Cowatch » se cache) ; reconnexion si l'arrière-plan redémarre.
+  const watchPanel = () => { try { chrome.runtime.connect({ name: 'panel:' + tabId }).onDisconnect.addListener(() => setTimeout(watchPanel, 500)); } catch {} };
+  if (tabId != null) watchPanel();
   await startEngine();
   await engine({ cmd: 'hello', tabId });
   chrome.tabs.sendMessage(tabId, { t: 'ping-video' }).catch(() => {});
@@ -215,15 +218,6 @@ async function copyInvite(code) {
   return true;
 }
 $('#invite').onclick = async () => { if (!(await copyInvite(st.code))) addLog({ kind: 'sys', text: `Lien d'invitation : ${await inviteLink(st.code)}` }); };
-
-// ---------- Plein écran : la fenêtre passe en plein écran, la vidéo occupe tout, le panneau se range ----------
-$('#full').onclick = async () => {
-  await chrome.runtime.sendMessage({ to: 'bg', cmd: 'immersive', tabId }).catch(() => {});
-  if (!engineLocal) {
-    try { await chrome.sidePanel?.close?.({ tabId }); } catch {}
-    window.close(); // le panneau se range ; la voix continue (moteur à part)
-  }
-};
 
 // ---------- Diagnostic du lecteur (lecture seule, rien n'est envoyé au serveur) ----------
 $('#diag').onclick = async () => {

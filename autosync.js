@@ -52,23 +52,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(12000);
   ok((await rate(A)) === 1 && (await rate(B)) === 1 && !(await paused(A)) && !(await paused(B)), 'tout le monde revient à vitesse normale : salon calé');
 
-  // ---------- Plein écran : le panneau se range, la vidéo occupe tout, la voix continue ----------
-  await B.v.bringToFront();
-  await B.p.bringToFront(); await B.p.click('#full');
-  let imm = false;
-  for (let i = 0; i < 20 && !imm; i++) { imm = await B.v.evaluate(() => { const r = document.querySelector('video').getBoundingClientRect(); return r.width >= innerWidth - 2 && r.height >= innerHeight - 2; }); if (!imm) await sleep(200); }
-  ok(imm, 'plein écran : la vidéo occupe toute la fenêtre');
-  for (let i = 0; i < 25 && !B.p.isClosed(); i++) await sleep(200);
-  ok(B.p.isClosed(), 'plein écran : le panneau est rangé');
-  ok(await B.v.evaluate(() => !document.body.innerText.includes('Mets la vidéo en plein écran')), 'aucun message d\'explication affiché');
-  await sleep(1000);
-  const st = await B.sw.evaluate(() => chrome.runtime.sendMessage({ to: 'engine', cmd: 'stats' }));
-  ok(st && st.inRoom && st.audio >= 2, `voix toujours active panneau fermé (${st && st.audio} voix reçues)`);
-  await A.p.fill('#chatIn', 'On voit tout !'); await A.p.press('#chatIn', 'Enter'); await sleep(800);
-  ok(await B.v.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('On voit tout !')), 'les messages arrivent toujours en bas à droite');
-  // Sortie : touche Échap
-  await B.v.keyboard.press('Escape'); await sleep(600);
-  ok(await B.v.evaluate(() => document.querySelector('video').getBoundingClientRect().width < innerWidth - 50), 'Échap : retour à l\'affichage normal');
+  // (plein écran : voir plein-ecran.js)
   ok(errs.length === 0, 'aucune erreur JS' + (errs.length ? ' : ' + errs.join(' | ') : ''));
   await A.c.close(); await B.c.close(); await C.c.close();
 })().catch(e => { console.error(e); process.exit(1); });
