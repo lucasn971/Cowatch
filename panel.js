@@ -232,5 +232,7 @@ $('#diag').onclick = async () => {
   box.value = txt; box.classList.remove('hidden');
   let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch { box.select(); try { copied = document.execCommand('copy'); } catch {} }
   btn.disabled = false; btn.textContent = copied ? 'Copié ✓ — colle-le à Claude' : 'Sélectionne le texte et copie-le';
+  // Aucune réponse de la page : Cowatch n'y tourne pas (onglet ouvert avant l'installation ou la mise à jour).
+  if (!diagParts.length) { $('#err').textContent = 'Cowatch ne voit pas la vidéo : recharge la page du programme.'; }
   setTimeout(() => { btn.textContent = 'Diagnostic'; }, 6000);
 };

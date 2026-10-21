@@ -55,8 +55,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await pA.fill('#chatIn', 'Ça commence !'); await pA.press('#chatIn', 'Enter'); await sleep(500);
   ok((await pB.textContent('#chat')).includes('LucasÇa commence !'), 'chat : message de Lucas reçu dans le panneau de Kylian');
   ok(await vB.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('Ça commence !')), 'chat : message affiché aussi sur la vidéo de Kylian (bas droite)');
-  await pB.click('#react button >> nth=0'); await sleep(400);
-  ok((await pA.textContent('#chat')).includes('😂'), 'réaction de Kylian reçue par Lucas');
+  // Réactions : elles montent sur la vidéo (couleur de la personne, sans pseudo) et ne vont pas dans le chat
+  const chatBefore = await pA.textContent('#chat');
+  await pB.click('#react button >> nth=0'); await sleep(500);
+  const r1 = await vA.evaluate(() => { const e = document.querySelector('#cowatch-react div'); return e ? { emoji: e.textContent, ring: e.style.boxShadow } : null; });
+  ok(r1 && r1.emoji === '😂' && /rgb|hsl/.test(r1.ring), `réaction de Kylian sur la vidéo de Lucas, entourée de sa couleur (${r1 && r1.emoji})`);
+  await pB.evaluate(() => { const b = document.querySelectorAll('#react button'); for (let i = 0; i < 40; i++) b[i % b.length].click(); }); // avalanche de réactions
+  await sleep(700); await vA.screenshot({ path: '/tmp/claude-0/reactions.png' }); await sleep(800);
+  const onScreen = await vA.evaluate(() => document.querySelectorAll('#cowatch-react div').length);
+  ok(onScreen > 3 && onScreen <= 14, `avalanche : l'écran reste lisible (${onScreen} réactions visibles au maximum 14)`);
+  ok(await pA.textContent('#chat') === chatBefore, 'les réactions ne remplissent pas le chat');
+  ok(!(await vA.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('😂'))), 'ni les messages sur la vidéo');
 
   // --- Synchro série ---
   await vA.evaluate(async () => { const v = document.querySelector('video'); v.currentTime = 40; await new Promise(r => v.addEventListener('seeked', r, { once: true })); await v.play(); });
@@ -79,6 +88,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(!(await vB.evaluate(() => document.querySelector('video').paused)), 'vidéo de Kylian continue');
   await sleep(2600);
   ok(!(await vA.evaluate(() => document.querySelector('video').paused)), 'vidéo de Lucas relancée après ~2,5 s');
+
+  // Mise à jour de l'extension : Cowatch se remet dans les onglets déjà ouverts (sans doublon s'il y est déjà)
+  const n = await (await sw(cB)).evaluate(() => self.reinject());
+  await sleep(800);
+  ok(n >= 2, `réinjection dans les onglets ouverts : ${n} injection(s) réussie(s)`);
+  await pA.fill('#chatIn', 'Toujours là'); await pA.press('#chatIn', 'Enter'); await sleep(800);
+  const dup = await vB.evaluate(() => [...document.querySelectorAll('#cowatch-chat div')].filter(d => d.textContent.includes('Toujours là')).length);
+  ok(dup === 1, `pas de doublon après réinjection (${dup} message affiché)`);
 
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
   await pA.screenshot({ path: path.join(__dirname, 'panel-v3.png') });

@@ -242,9 +242,36 @@
     setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
   }
   document.addEventListener('fullscreenchange', () => {
-    faceLayer(); chatLayer(); renderMuted(); speakingNow.forEach(id => showFace(id, true)); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
+    faceLayer(); chatLayer(); if (reactBox) reactLayer(); renderMuted(); speakingNow.forEach(id => showFace(id, true)); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
     renderReopen();
   });
+
+  // ---------- Réactions : les emojis montent sur la vidéo, dispersés, entourés de la couleur de la personne ----------
+  // Pas de pseudo (la couleur suffit à reconnaître qui réagit), rien dans le chat, et jamais plus de 14 à l'écran.
+  let reactBox = null;
+  function reactLayer() {
+    if (!isDisplayFrame()) { reactBox?.remove(); return null; }
+    if (!reactBox) { reactBox = document.createElement('div'); reactBox.id = 'cowatch-react'; reactBox.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;overflow:hidden'; }
+    const par = layerParent(); if (reactBox.parentNode !== par) par.append(reactBox);
+    return reactBox;
+  }
+  function showReaction(name, emoji) {
+    const box = reactLayer(); if (!box) return;
+    if (box.childElementCount >= 14) box.firstElementChild.remove(); // en cas d'avalanche, les plus anciennes laissent la place
+    let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; // même couleur que l'avatar de la personne
+    const el = document.createElement('div'); el.textContent = emoji;
+    const x = 58 + Math.random() * 36, size = 30 + Math.random() * 10; // partie droite de l'image, au-dessus des commandes
+    el.style.cssText = `position:absolute;left:${x}%;bottom:110px;font-size:${size}px;line-height:1;width:${size * 1.45}px;height:${size * 1.45}px;display:grid;place-items:center;border-radius:50%;background:rgba(15,14,19,.55);box-shadow:0 0 0 3px hsl(${h},75%,58%),0 4px 14px rgba(0,0,0,.4);will-change:transform,opacity`;
+    box.append(el);
+    const dx = (Math.random() - 0.5) * 90, rise = 220 + Math.random() * 140;
+    const anim = el.animate([
+      { transform: 'translate(0,0) scale(.6)', opacity: 0 },
+      { transform: `translate(${dx * 0.3}px,-40px) scale(1.1)`, opacity: 1, offset: 0.15 },
+      { transform: `translate(${dx * 0.7}px,-${rise * 0.65}px) scale(1)`, opacity: 1, offset: 0.65 },
+      { transform: `translate(${dx}px,-${rise}px) scale(1)`, opacity: 0 },
+    ], { duration: 2600 + Math.random() * 800, easing: 'ease-out' });
+    anim.onfinish = () => el.remove();
+  }
 
   // ---------- Bouton « rouvrir Cowatch » ----------
   // Quand on est dans un salon et que le panneau est fermé, une petite languette sur le bord droit de la page le rouvre.
@@ -279,7 +306,7 @@
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
-    else if (m.t === 'reaction') showChat(m.name, m.emoji, true);
+    else if (m.t === 'reaction') showReaction(m.name, m.emoji);
     else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen) { unread++; renderReopen(); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);

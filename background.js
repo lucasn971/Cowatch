@@ -29,6 +29,23 @@ async function openPanelFor(tab) {
   return 'tab';
 }
 
+// Après installation ou mise à jour, Chrome ne relance pas Cowatch dans les onglets déjà ouverts :
+// on l'y remet nous-mêmes, sinon l'onglet Netflix ouvert avant la mise à jour resterait sans Cowatch.
+async function reinject() {
+  if (!chrome.scripting?.executeScript) return 0;
+  let n = 0;
+  for (const cs of chrome.runtime.getManifest().content_scripts || []) {
+    if (!cs.js.includes('player.js') && !cs.js.includes('clock.js')) continue;
+    const tabs = await chrome.tabs.query({ url: cs.matches }).catch(() => []);
+    for (const t of tabs) {
+      try { await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: cs.js, world: cs.world || 'ISOLATED' }); n++; } catch {}
+    }
+  }
+  return n;
+}
+self.reinject = reinject; // pour les tests
+chrome.runtime.onInstalled.addListener(() => { reinject(); });
+
 let creating = null;
 async function ensureEngine() {
   if (!hasOffscreen) return false;

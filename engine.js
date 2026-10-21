@@ -198,7 +198,7 @@
       if (m.t === 'signal') await onSignal(m.from, m.data);
       if (m.t === 'chat') addMsg(m);
       if (m.t === 'chat-history') m.items.forEach(addMsg);
-      if (m.t === 'reaction') addLog({ kind: 'msg', name: m.name, text: m.emoji, at: Date.now() });
+      // Réactions : seulement en surimpression sur la vidéo (pas dans le chat, sinon elles noient les messages).
       if (m.t === 'mode') { S.mode = m.mode === 'live' ? 'live' : 'vod'; sys(S.mode === 'live' ? 'Match en direct : calage automatique activé.' : 'Série / replay : lecture partagée.'); snap(); }
       if (m.t === 'calib-start') { S.calib = { id: m.id, label: m.label, myTop: false, items: [], msg: `Appuie quand tu vois : ${m.label}` }; snap(); }
       if (m.t === 'calib-result') { if (!S.calib || S.calib.id !== m.id) S.calib = { id: m.id, label: m.label, myTop: true, items: [], msg: '' }; S.calib.items = m.items; snap(); }

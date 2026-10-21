@@ -328,10 +328,13 @@ function handle(conn) {
         if (target) target.conn.send({ t: 'signal', from: me.id, data: m.data });
         break;
       }
-      case 'reaction':
+      case 'reaction': { // on peut en envoyer beaucoup (c'est le but), mais pas plus de 8 par seconde et par personne
+        const now = Date.now(); me.rx = (me.rx || []).filter(t => now - t < 1000);
+        if (me.rx.length >= 8) break; me.rx.push(now);
         stats.reactions++;
         broadcast(me.room, { t: 'reaction', from: me.id, name: me.name, emoji: String(m.emoji).slice(0, 8) });
         break;
+      }
       case 'sync': // play / pause / seek / state — relayé aux autres lecteurs et aux salons (pour l'affichage)
         stats.syncEvents++;
         broadcast(me.room, { t: 'sync', from: me.id, name: me.name, action: m.action, time: +m.time || 0, playing: !!m.playing, rate: +m.rate || 1, sentAt: Date.now() }, me.id);
