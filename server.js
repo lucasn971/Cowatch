@@ -219,6 +219,10 @@ function autoSync(room) {
   const reason = md.syncAgain ? 'arrival' : 'drift', who = md.syncWho || null;
   const ps = peersOf(room).filter(c => c.kind === 'player' && c.clock && now - c.clock.at < 8000);
   if (ps.length < 2) return;
+  // Après un calage : on attend une position envoyée APRÈS la fin du calage, sinon on recalerait sur une info périmée.
+  if (md.syncEnd && ps.some(c => c.clock.at < md.syncEnd + 500)) return;
+  // Lecteur revenu tout seul au direct pendant le calage : il ne sait pas prendre de retard, ce sont les autres qui avancent.
+  for (const c of ps) if (c.expectL != null && !c.noBack && c.clock.L < c.expectL - 1.5) { c.noBack = true; stats.noBack = (stats.noBack || 0) + 1; }
   const Ls = ps.map(c => c.clock.L).sort((a, b) => a - b), med = Ls[Ls.length >> 1];
   const ok = ps.filter(c => Math.abs(c.clock.L - med) < 120); // au-delà : pas le même programme
   if (ok.length < 2) return;
@@ -241,7 +245,7 @@ function autoSync(room) {
       if (c.kind === 'player' && c.clock) { c.expectL = c.clock.L + it.ahead; c.checkFrom = now + holdFor(it.ahead); }
     }
   }
-  md.syncUntil = now + hold;
+  md.syncUntil = now + hold; md.syncEnd = md.syncUntil;
   stats.autoSyncs++;
   broadcast(room, { t: 'autosync', reason, who, items, spread: +spread.toFixed(2) }, null, 'salon');
 }
@@ -309,6 +313,7 @@ function handle(conn) {
           if (me.clock.L < me.expectL - 1.5 && !me.noBack) { me.noBack = true; stats.noBack = (stats.noBack || 0) + 1; }
           if (Date.now() > me.checkFrom + 60000) { me.checkFrom = null; me.expectL = null; }
         }
+        if (me.expectL != null && !me.checkFrom) me.expectL = null;
         if (me.needSync) { me.needSync = false; const md = metaOf(me.room); md.syncAgain = 'arrival'; md.syncWho = me.name; autoSync(me.room); }
         return;
       }
