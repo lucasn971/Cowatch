@@ -14,7 +14,9 @@
   }
   function findVideo() {
     const vids = allVideos().filter(v => v.readyState > 0 || v.src || v.currentSrc);
-    vids.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);
+    // Prime Video garde deux vidéos de même taille (pub + programme) : à taille égale, celle qui joue, puis la plus longue.
+    const area = v => Math.round(v.clientWidth * v.clientHeight / 1000), len = v => isFinite(v.duration) ? v.duration : 1e9;
+    vids.sort((a, b) => area(b) - area(a) || (a.paused - b.paused) || len(b) - len(a));
     return vids[0] || null;
   }
   function attach(v) {
@@ -81,6 +83,12 @@
     stateTimer = setInterval(() => { if (mode === 'vod' && isHost() && video && !video.paused) emit('state'); }, 3000);
   }
 
+  // Se déplacer dans la vidéo. Netflix plante (erreur M7375) si on change directement la position de la vidéo :
+  // on passe alors par sa propre commande, via clock.js qui tourne dans la page.
+  function seekTo(t) {
+    if (/(^|\.)netflix\.com$/.test(location.hostname)) document.dispatchEvent(new CustomEvent('cowatch-cmd', { detail: JSON.stringify({ seek: t }) }));
+    else video.currentTime = t;
+  }
   async function apply(m) {
     if (!video || mode !== 'vod') return;
     const now = Date.now() + offset;
@@ -88,7 +96,7 @@
     const drift = video.currentTime - target;
     if (m.action === 'state' && Math.abs(drift) < DRIFT && video.paused === !m.playing) return;
     quiet();
-    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) video.currentTime = target;
+    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) seekTo(target);
     if (m.playing && video.paused) { try { await video.play(); } catch { banner('Clique sur ▶ pour rejoindre la lecture'); } }
     if (!m.playing && !video.paused) video.pause();
   }
@@ -105,7 +113,7 @@
     if (sec < 0) {
       let to = video.currentTime - sec;
       try { const sk = video.seekable; if (sk.length) to = Math.min(to, sk.end(sk.length - 1) - 1); } catch {}
-      quiet(4000); video.currentTime = to;
+      quiet(4000); seekTo(to);
       if (auto) banner('Calage avec le salon…');
       return;
     }

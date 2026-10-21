@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Faux direct DASH</title></head>
+<body style="margin:0;background:#000">
+<video id="v" muted autoplay playsinline style="width:640px;height:360px"></video>
+<script src="/dash.all.min.js"></script>
+<script>
+// Faux direct type Prime Video / M6+ : DASH, lecteur dash.js.
+const q = new URLSearchParams(location.search), v = document.getElementById('v');
+const player = dashjs.MediaPlayer().create();
+player.updateSettings({ debug: { logLevel: +(q.get('log') || 0) }, streaming: { delay: { liveDelay: +(q.get('lat') || 6) }, liveCatchup: { enabled: false } } });
+player.initialize(v, '/live.mpd', true);
+window.__truth = () => { try { const t = player.timeAsUTC(); return t > 1e9 ? t * 1000 : null; } catch { return null; } }; // vérité terrain
+</script></body></html>

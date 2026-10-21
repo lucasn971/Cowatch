@@ -55,13 +55,16 @@
             const d = +s.getAttribute('d'), r = +s.getAttribute('r') || 0;
             for (let i = 0; i <= r; i++) {
               const u = media.replace(/\$RepresentationID\$/g, id).replace(/\$Bandwidth\$/g, bw).replace(/\$Time\$/g, t).replace(/\$Number(%0(\d+)d)?\$/g, (_, f, w) => String(num).padStart(+w || 0, '0'));
-              segs.set(keyOf(abs(u, base)), { wall: ast + (pStart + (t - pto) / ts) * 1000, dur: d / ts });
+              const wall = ast + (pStart + (t - pto) / ts) * 1000;
+              if (wall > Date.now() - 10 * 60 * 1000) segs.set(keyOf(abs(u, base)), { wall, dur: d / ts }); // 10 dernières minutes
+
               t += d; num++;
             }
           }
         }
       }
       lastPlaylist = { at: Date.now(), kind: 'dash' }; liveSeen = Date.now();
+      for (const [k, v] of segs) if (v.wall < Date.now() - 15 * 60 * 1000) segs.delete(k);
     } catch {}
   }
   let dashAst = null, lastPlaylist = null, liveSeen = 0;
@@ -165,6 +168,17 @@
       if ((src && msOfUrl.get(src) === ms) || v.srcObject === ms) v.setAttribute('data-cowatch-map', JSON.stringify(m.samples.slice(-12)));
     }
   }
+  // Commandes venues de l'extension pour les lecteurs qui exigent leur propre API (Netflix).
+  document.addEventListener('cowatch-cmd', e => {
+    let c; try { c = JSON.parse(e.detail); } catch { return; }
+    if (c.seek != null && window.netflix) {
+      try {
+        const vp = netflix.appContext.state.playerApp.getAPI().videoPlayer;
+        const id = vp.getAllPlayerSessionIds().find(s => s.startsWith('watch')) || vp.getAllPlayerSessionIds()[0];
+        vp.getVideoPlayerBySessionId(id).seek(Math.round(c.seek * 1000)); // Netflix compte en millisecondes
+      } catch {}
+    }
+  });
   // Repli pour DASH quand la page ne passe pas par ces étapes : début de disponibilité connu.
   setInterval(() => {
     // Direct détecté par la liste de morceaux (certains lecteurs donnent une durée finie qui grandit, comme hls.js).

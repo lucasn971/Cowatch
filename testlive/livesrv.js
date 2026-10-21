@@ -6,6 +6,11 @@ if (!fs.existsSync(path.join(DIR, 'seg', 's150.m4s'))) {
   fs.mkdirSync(path.join(DIR, 'seg'), { recursive: true });
   execSync(`ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=192x108:rate=25" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 300 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 120k -g 50 -keyint_min 50 -c:a libopus -b:a 48k -f hls -hls_time 2 -hls_playlist_type vod -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename '${DIR}/seg/s%03d.m4s' ${DIR}/seg/vod.m3u8`);
 }
+// Morceaux DASH (VP9 : Chromium de test ne lit pas le H.264 ; format de morceaux comme Prime Video, M6+ ou france.tv).
+if (!fs.existsSync(path.join(DIR, 'dseg', 'c00150.m4s'))) {
+  fs.mkdirSync(path.join(DIR, 'dseg'), { recursive: true });
+  execSync(`cd '${DIR}/dseg' && ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=192x108:rate=25" -t 300 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 120k -g 50 -keyint_min 50 -f dash -dash_segment_type mp4 -seg_duration 2 -use_template 1 -use_timeline 1 -init_seg_name init.m4s -media_seg_name 'c$Number%05d$.m4s' d.mpd`);
+}
 
 // ---------- Faux direct ----------
 const T0 = Date.now() + 1000;     // le morceau n est disponible à T0 + (n+1)*2 s
@@ -20,7 +25,25 @@ const live = http.createServer((req, res) => {
     for (let n = first; n <= last; n++) m += `#EXT-X-PROGRAM-DATE-TIME:${new Date(T0 - ENC + n * 2000).toISOString()}\n#EXTINF:2.000,\nseg/s${String(n).padStart(3, '0')}.m4s\n`;
     res.setHeader('content-type', 'application/vnd.apple.mpegurl'); res.setHeader('cache-control', 'no-store'); return res.end(m);
   }
-  const f = path.join(DIR, u.pathname === '/hls.min.js' ? 'hls.min.js' : u.pathname === '/player.html' ? 'player.html' : u.pathname.slice(1));
+  // DASH « type Prime Video » : début du direct (availabilityStartTime) lointain, grand décalage de période, numéros de morceaux.
+  if (u.pathname === '/live.mpd') {
+    const last = Math.min(149, Math.floor((Date.now() - T0) / 2000) - 1), first = Math.max(0, last - 7);
+    const AST = T0 - ENC - 3600 * 1000; // la période commence 1 h après le début du direct
+    const m = `<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="dynamic" minimumUpdatePeriod="PT2S" timeShiftBufferDepth="PT16S" suggestedPresentationDelay="PT4S" minBufferTime="PT2S" availabilityStartTime="${new Date(AST).toISOString()}" publishTime="${new Date().toISOString()}">
+ <UTCTiming schemeIdUri="urn:mpeg:dash:utc:direct:2014" value="${new Date().toISOString()}"/>
+ <Period id="p1" start="PT3600S">
+  <AdaptationSet mimeType="video/mp4" contentType="video" segmentAlignment="true">
+   <SegmentTemplate timescale="1000" media="dseg/c$Number%05d$.m4s" initialization="dseg/init.m4s" startNumber="${first + 1}" presentationTimeOffset="0">
+    <SegmentTimeline><S t="${first * 2000}" d="2000" r="${last - first}"/></SegmentTimeline>
+   </SegmentTemplate>
+   <Representation id="v0" codecs="vp09.00.10.08" width="192" height="108" bandwidth="120000"/>
+  </AdaptationSet>
+ </Period>
+</MPD>`;
+    res.setHeader('content-type', 'application/dash+xml'); res.setHeader('cache-control', 'no-store'); return res.end(m);
+  }
+  const f = path.join(DIR, ['/hls.min.js', '/dash.all.min.js', '/player.html', '/player-dash.html'].includes(u.pathname) ? u.pathname.slice(1) : u.pathname.slice(1));
   if (!f.startsWith(DIR) || !fs.existsSync(f)) { res.statusCode = 404; return res.end(); }
   res.setHeader('content-type', f.endsWith('.html') ? 'text/html' : f.endsWith('.js') ? 'text/javascript' : 'video/mp4');
   fs.createReadStream(f).pipe(res);

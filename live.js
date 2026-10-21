@@ -11,6 +11,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Scénario « snap » : le lecteur de Lucas refuse d'avoir plus de 9 s de retard (il revient tout seul au direct).
 // Cowatch doit le comprendre et faire avancer Kilian jusqu'à Lucas.
 const SNAP = process.argv.includes('snap');
+// Scénario « dash » : même chose avec un direct DASH lu par dash.js (format de Prime Video, M6+, france.tv).
+const DASH = process.argv.includes('dash');
 
 const { live } = require('../testlive/livesrv.js');
 
@@ -26,7 +28,7 @@ const { live } = require('../testlive/livesrv.js');
   await sleep(20000); // assez de morceaux pour que chacun prenne son retard
   const open = async (c, who, lat) => {
     const v = await c.newPage(); v.on('pageerror', e => errs.push(who + ' page ' + e.message));
-    await v.goto(`${LIVE}/player.html?who=${who}&lat=${lat}` + (who === 'lucas' && SNAP ? '&max=9' : ''));
+    await v.goto(`${LIVE}/${DASH ? 'player-dash' : 'player'}.html?who=${who}&lat=${lat}` + (who === 'lucas' && SNAP ? '&max=9' : ''));
     await v.waitForFunction(() => window.__truth && window.__truth(), null, { timeout: 30000 });
     const p = await c.newPage(); p.on('pageerror', e => errs.push(who + ' ' + e.message));
     await p.goto(`chrome-extension://${await extId(c)}/panel.html?tab=${await tabIdOf(c, 'who=' + who)}&server=${encodeURIComponent(BASE)}`);
@@ -42,6 +44,7 @@ const { live } = require('../testlive/livesrv.js');
 
   const A = await open(cA, 'lucas', SNAP ? 4 : 6), B = await open(cB, 'kilian', 14);
   if (SNAP) console.log('--- scénario : le lecteur de Lucas revient tout seul au direct');
+  if (DASH) console.log('--- scénario : direct DASH (dash.js)');
   await sleep(6000);
   for (const [who, x] of [['Lucas', A], ['Kilian', B]]) {
     const m = await measure(x.v);

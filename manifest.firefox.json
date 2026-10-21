@@ -12,6 +12,10 @@
     "*://*.paramountplus.com/*",
     "*://*.tf1.fr/*",
     "*://*.primevideo.com/*",
+    "*://*.amazon.com/*",
+    "*://*.amazon.fr/*",
+    "*://*.disneyplus.com/*",
+    "*://*.netflix.com/*",
     "*://*.youtube.com/*",
     "https://salon-coche-private.onrender.com/*",
     "http://localhost/*"
@@ -36,6 +40,10 @@
         "*://*.tf1.fr/*",
         "*://*.primevideo.com/*",
         "*://*.youtube.com/*",
+        "*://*.netflix.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.amazon.fr/*",
+        "*://*.amazon.com/*",
         "http://localhost/*"
       ],
       "js": [
@@ -52,6 +60,10 @@
         "*://*.tf1.fr/*",
         "*://*.primevideo.com/*",
         "*://*.youtube.com/*",
+        "*://*.netflix.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.amazon.fr/*",
+        "*://*.amazon.com/*",
         "http://localhost/*"
       ],
       "js": [
