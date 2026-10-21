@@ -66,6 +66,7 @@
     if (video && video.readyState > 0) { const k = isLive(video); if (k !== lastKind) { lastKind = k; chrome.runtime.sendMessage({ cmd: 'kind', live: k }).catch(() => {}); } }
   }, 1000);
   chrome.runtime.sendMessage({ cmd: 'hello' }).catch(() => {}); // page (re)chargée : le panneau renvoie l'état du salon
+  if (window.top === window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
 
   // Invitation en attente : petite bulle qui ouvre le panneau d'un clic.
   if (window.top === window) chrome.storage.local.get('pendingJoin').then(({ pendingJoin }) => {
@@ -130,9 +131,17 @@
 
   let bannerEl;
   // En plein écran, seul l'élément affiché en plein écran est visible : on y place nos calques.
-  function layerParent() { const f = document.fullscreenElement || document.webkitFullscreenElement; return f && f.tagName !== 'VIDEO' ? f : document.documentElement; }
+  function layerParent() { const f = document.fullscreenElement || document.webkitFullscreenElement; return f && f.tagName !== 'VIDEO' && f.tagName !== 'IFRAME' ? f : document.documentElement; }
+  // Qui dessine les visages et les messages ? La page, sauf quand le plein écran du site se fait dans un lecteur intégré
+  // (iframe, comme TF1 ou Canal+) : c'est alors ce lecteur, seul visible, qui les affiche.
+  function isDisplayFrame() {
+    const f = document.fullscreenElement || document.webkitFullscreenElement;
+    if (f && f.tagName !== 'IFRAME') return true;
+    if (window.top !== window) return false;
+    return !(f && f.tagName === 'IFRAME');
+  }
   function banner(txt) {
-    if (window.top !== window) return;
+    if (!isDisplayFrame()) return;
     bannerEl = bannerEl || Object.assign(document.createElement('div'), { style: 'position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:70vw;z-index:2147483647;background:#ff5a3c;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:8px;pointer-events:none' });
     bannerEl.textContent = txt; layerParent().append(bannerEl);
     clearTimeout(bannerEl._t); bannerEl._t = setTimeout(() => bannerEl.remove(), 3500);
@@ -167,7 +176,7 @@
   let roster = new Map(), faceBox = null, chatBox = null;
   const speaking = new Map(); // id -> timer de disparition
   function faceLayer() {
-    if (window.top !== window) return null;
+    if (!isDisplayFrame()) { faceBox?.remove(); return null; }
     if (!faceBox) {
       faceBox = document.createElement('div'); faceBox.id = 'cowatch-faces';
       faceBox.style.cssText = 'position:fixed;top:18px;left:18px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-start;gap:10px;pointer-events:none;font:600 12px system-ui,sans-serif';
@@ -210,7 +219,7 @@
   function toast(text) { banner(text); }
   // ---------- Messages du chat : en bas à droite, en transparence, ils s'effacent seuls ----------
   function chatLayer() {
-    if (window.top !== window) return null;
+    if (!isDisplayFrame()) { chatBox?.remove(); return null; }
     if (!chatBox) {
       chatBox = document.createElement('div'); chatBox.id = 'cowatch-chat';
       chatBox.style.cssText = 'position:fixed;right:24px;bottom:96px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,40vw);pointer-events:none;font:14px/1.35 system-ui,sans-serif';
@@ -230,65 +239,48 @@
     while (box.children.length > 5) box.firstChild.remove();
     setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
   }
-  document.addEventListener('fullscreenchange', () => { if (faceBox) faceLayer(); if (chatBox) chatLayer(); if (bannerEl?.isConnected) layerParent().append(bannerEl); });
+  document.addEventListener('fullscreenchange', () => {
+    faceLayer(); chatLayer(); renderMuted(); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
+    renderReopen();
+  });
 
-  // ---------- Plein écran Cowatch : la vidéo occupe toute la fenêtre (passée en plein écran par l'extension) ----------
-  let immersed = null, exitBtn = null, exitTimer = null;
-  function playerBox(v) {
-    // Le plus grand conteneur qui a la même taille que la vidéo = le lecteur avec ses commandes.
-    const r = v.getBoundingClientRect(); let box = v, el = v.parentElement;
-    while (el && el !== document.body) { const q = el.getBoundingClientRect(); if (Math.abs(q.width - r.width) < 4 && Math.abs(q.height - r.height) < 4) box = el; else break; el = el.parentElement; }
-    return box;
-  }
-  function setImmersive(on) {
+  // ---------- Bouton « rouvrir Cowatch » ----------
+  // Quand on est dans un salon et que le panneau est fermé, une petite languette sur le bord droit de la page le rouvre.
+  // Elle disparaît pendant le plein écran du programme, et revient dès qu'on en sort.
+  let inRoom = false, panelOpen = true, unread = 0, reopenEl = null;
+  function renderReopen() {
     if (window.top !== window) return;
-    if (on && !immersed && video) {
-      const box = playerBox(video);
-      immersed = { box, style: box.getAttribute('style'), vstyle: video.getAttribute('style') };
-      box.style.cssText += ';position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;z-index:2147483640!important;background:#000!important;margin:0!important;transform:none!important';
-      if (box !== video) video.style.cssText += ';width:100%!important;height:100%!important;object-fit:contain!important';
-      document.documentElement.style.overflow = 'hidden';
-      document.addEventListener('mousemove', showExit, true);
-      // Si un parent bloque le plein cadre (transform…), on agrandit la vidéo elle-même.
-      setTimeout(() => { if (!immersed) return; const r = video.getBoundingClientRect(); if (r.width < innerWidth * 0.9 && r.height < innerHeight * 0.9) video.style.cssText += ';position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:2147483640!important;background:#000!important'; }, 300);
-    } else if (!on && immersed) {
-      const { box, style, vstyle } = immersed; immersed = null;
-      style == null ? box.removeAttribute('style') : box.setAttribute('style', style);
-      if (box !== video) vstyle == null ? video.removeAttribute('style') : video.setAttribute('style', vstyle);
-      else if (vstyle != null) video.setAttribute('style', vstyle);
-      document.documentElement.style.overflow = '';
-      document.removeEventListener('mousemove', showExit, true); exitBtn?.remove();
+    const show = inRoom && !panelOpen && !document.fullscreenElement;
+    if (!show) { reopenEl?.remove(); return; }
+    if (!reopenEl) {
+      reopenEl = document.createElement('button'); reopenEl.id = 'cowatch-reopen'; reopenEl.type = 'button';
+      reopenEl.setAttribute('aria-label', 'Ouvrir Cowatch');
+      reopenEl.style.cssText = 'position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;display:flex;align-items:center;gap:7px;background:#ff5a3c;color:#fff;border:0;border-radius:12px 0 0 12px;padding:11px 12px 11px 14px;font:700 13px system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.4);cursor:pointer';
+      reopenEl.onclick = async () => {
+        const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null);
+        if (r && r.ok) { panelOpen = true; unread = 0; renderReopen(); }
+      };
+      document.addEventListener('fullscreenchange', renderReopen);
     }
-    if (faceBox) faceLayer(); if (chatBox) chatLayer();
+    reopenEl.textContent = '💬 Cowatch';
+    if (unread) { const n = document.createElement('span'); n.textContent = unread > 9 ? '9+' : String(unread); n.style.cssText = 'background:#fff;color:#ff5a3c;border-radius:999px;padding:1px 7px;font-size:12px'; reopenEl.append(n); }
+    if (!reopenEl.isConnected) document.documentElement.append(reopenEl);
   }
-  // Petit bouton discret pour ressortir (et rouvrir le panneau), visible quand on bouge la souris.
-  function showExit() {
-    if (!immersed) return;
-    if (!exitBtn) {
-      exitBtn = document.createElement('button'); exitBtn.id = 'cowatch-exit'; exitBtn.textContent = '✕ Quitter le plein écran';
-      exitBtn.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:rgba(15,14,19,.6);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:7px 13px;font:600 12px system-ui;cursor:pointer;backdrop-filter:blur(6px)';
-      exitBtn.onclick = exitImmersive;
-    }
-    if (!exitBtn.isConnected) layerParent().append(exitBtn);
-    exitBtn.style.opacity = '1'; clearTimeout(exitTimer); exitTimer = setTimeout(() => { if (exitBtn) exitBtn.style.opacity = '0'; }, 2500);
-  }
-  function exitImmersive() { setImmersive(false); chrome.runtime.sendMessage({ cmd: 'exitImmersive' }).catch(() => {}); }
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && immersed && !document.fullscreenElement) { e.stopPropagation(); exitImmersive(); } }, true);
   chrome.runtime.onMessage.addListener(m => {
-    if (m.t === 'immersive') { setImmersive(!!m.on); return; }
+    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen) unread = 0; renderReopen(); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); renderMuted(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
-    if (m.t === 'welcome') { mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
+    if (m.t === 'welcome') { inRoom = true; renderReopen(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
     else if (m.t === 'reaction') showChat(m.name, m.emoji, true);
-    else if (m.t === 'chat') showChat(m.name, m.text);
+    else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen) { unread++; renderReopen(); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);
-    else if (m.t === 'disconnected') { me = null; banner('Cowatch déconnecté'); }
+    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); banner('Cowatch déconnecté'); }
   });
 })();
