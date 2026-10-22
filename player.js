@@ -73,7 +73,7 @@
     if (!pendingJoin || Date.now() - pendingJoin.at > 30 * 60 * 1000) return;
     const b = document.createElement('button');
     b.textContent = `Rejoindre le salon ${pendingJoin.code}`;
-    b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#ff5a3c;color:#fff;border:0;border-radius:999px;padding:12px 18px;font:600 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
+    b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#F4F6FA;color:#060A1C;border:0;border-radius:999px;padding:12px 18px;font:700 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
     b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Cowatch en haut à droite'; };
     document.documentElement.append(b);
   }).catch(() => {});
@@ -224,7 +224,7 @@
   function showFace(id, on) {
     if (on) speakingNow.add(id); else speakingNow.delete(id);
     const box = faceLayer(); if (!box) return;
-    const p = roster.get(id); if (!p) return;
+    const p = roster.get(id); if (!p || p.self) return; // on n'affiche que les autres (on sait quand on parle soi-même)
     let el = box.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (on) {
       clearTimeout(speaking.get(id));
@@ -342,14 +342,15 @@
     flash.style.cssText = `position:absolute;inset:0;background:radial-gradient(55% 45% at 50% 50%, ${rgba(t.text, .22)} 0%, ${rgba(t.text, 0)} 70%)`;
     const wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:6px';
     const big = document.createElement('span'); big.textContent = 'Buuut';
-    big.style.cssText = `font:800 min(24vh,240px)/.8 ${t.display};text-transform:uppercase;letter-spacing:.01em;background:linear-gradient(180deg,#FFFFFF 0%,#B9C1D3 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 24px rgba(0,0,0,.5))`;
+    big.style.cssText = `font:800 min(24vh,240px)/.8 ${t.display};text-transform:uppercase;letter-spacing:.01em;background:linear-gradient(180deg,#FFFFFF 0%,#B9C1D3 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:3px rgba(6,10,28,.55);paint-order:stroke fill;filter:drop-shadow(0 6px 24px rgba(0,0,0,.6))`;
     const who = document.createElement('span'); who.textContent = `${m.by} l'a crié en premier`;
     who.style.cssText = `font:600 min(2.6vh,22px) ${t.body};color:${t.text};text-shadow:0 2px 8px rgba(0,0,0,.6)`;
     wrap.append(big, who); box.append(flash, wrap);
     // Entrée 0,3 s avec léger rebond, tient ≈ 1 s, s'éteint.
-    flash.animate([{ opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: .6, offset: .7 }, { opacity: 0 }], { duration: 1800, fill: 'forwards' });
-    const a = wrap.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.08)', offset: .17 }, { transform: 'scale(1)', offset: .25 }, { opacity: 1, transform: 'scale(1)', offset: .78 }, { opacity: 0, transform: 'scale(1.03)' }], { duration: 1800, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'forwards' });
-    a.onfinish = () => box.replaceChildren();
+    flash.style.opacity = wrap.style.opacity = '0'; // état final : invisible (même si l'animation est interrompue)
+    flash.animate([{ opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: .6, offset: .7 }, { opacity: 0 }], { duration: 1800 });
+    wrap.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.08)', offset: .17 }, { transform: 'scale(1)', offset: .25 }, { opacity: 1, transform: 'scale(1)', offset: .78 }, { opacity: 0, transform: 'scale(1.03)' }], { duration: 1800, easing: 'cubic-bezier(.2,.9,.3,1.2)' });
+    clearTimeout(box._t); box._t = setTimeout(() => box.replaceChildren(), 1900); // retiré à coup sûr, même si le plein écran change entre-temps
   }
 
   // ---------- Vestiaire : prono du groupe en haut à gauche ----------

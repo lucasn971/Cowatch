@@ -344,7 +344,7 @@ function handle(conn) {
         stats.reactions++;
         const emoji = String(m.emoji).slice(0, 8), md = metaOf(me.room), at = cleanPos(m);
         // Vestiaire : le premier ⚽ déclenche le BUUUT. Un seul par but : les ⚽ des 20 s suivantes sont de simples réactions.
-        if (md.theme === 'vestiaire' && emoji === '⚽' && (!md.goal || now - md.goal.at > 20000)) {
+        if (md.theme === 'vestiaire' && emoji === '⚽' && (!md.goal || md.goal.cancelled || now - md.goal.at > 20000)) {
           md.goal = { id: crypto.randomBytes(3).toString('hex'), at: now, by: me.name };
           stats.goals = (stats.goals || 0) + 1;
           broadcast(me.room, { t: 'goal', id: md.goal.id, by: me.name, from: me.id, ...at });

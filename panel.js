@@ -170,6 +170,7 @@ $('#go').onclick = () => {
 // ---------- Menu « … » ----------
 $('#menuBtn').onclick = e => { e.stopPropagation(); const open = $('#menu').classList.toggle('hidden') === false; $('#menuBtn').setAttribute('aria-expanded', String(open)); };
 document.addEventListener('click', e => { if (!$('#menu').contains(e.target)) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } });
+$('#menu').addEventListener('click', e => { if (e.target.closest('button')) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } }); // un choix referme le menu
 $('#mTheme').onclick = () => openChoice('change');
 $('#mCalib').onclick = () => { calibOpen = !calibOpen; if (calibOpen) $('#manual').open = true; render(); };
 

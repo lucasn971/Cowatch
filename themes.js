@@ -13,7 +13,7 @@
       upper: true, radius: '10px', pill: '99px',
       emojis: ['⚽', '🔥', '😤', '🙌', '🧤', '🫣'], labels: ['But', 'Feu', 'Rage', 'Bravo', 'Arrêt du gardien', 'Je regarde pas'],
       invite: 'Convoquer un pote', placeholder: 'Crie un truc…', groupWord: 'Le groupe',
-      card: '<span class="cw-c1" style="font:800 30px/0.86 var(--cw-display);text-transform:uppercase">Ce soir,<br>on joue.</span><span class="cw-c2" style="font:800 18px var(--cw-display)">2-1</span>',
+      card: '<span class="cw-c1" style="font:800 24px/0.86 var(--cw-display);text-transform:uppercase">Ce soir,<br>on joue.</span><span class="cw-c2" style="font:800 16px var(--cw-display)">2-1</span>',
       cardBg: 'radial-gradient(90% 120% at 50% 0%, #1B2A5E 0%, #0C1433 45%, #060A1C 100%)',
     },
     salle: {
@@ -25,7 +25,7 @@
       upper: false, radius: '3px', pill: '3px',
       emojis: ['👏', '😱', '😢', '🤯', '🔥', '🍿'], labels: ['Bravo', 'Frisson', 'Émotion', 'Choc', 'Feu', 'Pop-corn'],
       invite: 'Inviter', placeholder: 'Chatter…', groupWord: 'La salle',
-      card: '<span class="cw-c1" style="font:italic 30px var(--cw-display);width:100%;text-align:center;left:0;top:42%">la séance</span>',
+      card: '<span class="cw-c1" style="font:italic 24px var(--cw-display);width:100%;text-align:center;left:0;top:34%">la séance</span>',
       cardBg: 'linear-gradient(180deg, #121317 0%, #08080A 100%)',
     },
     canape: {
@@ -37,7 +37,7 @@
       upper: false, radius: '22px', pill: '99px',
       emojis: ['😱', '😂', '💔', '👀', '🔥', '🍿'], labels: ['Choc', 'Rire', 'Cœur brisé', 'Suspicion', 'Feu', 'Pop-corn'],
       invite: 'Ramène un pote', placeholder: 'Balance ton avis…', groupWord: 'Sur le canap\'',
-      card: '<span class="cw-c1" style="font:800 28px/0.92 var(--cw-display)">3 sur<br>le canap\'</span><span class="cw-c2" style="font-size:26px">😂</span>',
+      card: '<span class="cw-c1" style="font:800 20px/0.95 var(--cw-display)">3 sur<br>le canap\'</span><span class="cw-c2" style="left:auto;right:10px;font-size:22px">😂</span>',
       cardBg: '#1E1828',
     },
     live: {
@@ -49,7 +49,7 @@
       upper: false, radius: '18px', pill: '99px',
       emojis: ['🐍', '💅', '😱', '💔', '👀', '🫢'], labels: ['Serpent', 'Classe', 'Choc', 'Cœur brisé', 'Suspicion', 'Oups'],
       invite: 'Inviter sur le plateau', placeholder: 'Ton avis en direct…', groupWord: 'Le plateau',
-      card: '<span class="cw-c1" style="font:italic 34px/0.9 var(--cw-display)">Le<br>plateau</span><span class="cw-c2" style="background:#E9C3CB;color:#141114;border-radius:99px;padding:4px 10px;font:15px var(--cw-display)">Elle part.</span>',
+      card: '<span class="cw-c1" style="font:italic 24px/0.9 var(--cw-display)">Le plateau</span><span class="cw-c2" style="background:#E9C3CB;color:#141114;border-radius:99px;padding:3px 9px;font:13px var(--cw-display)">Elle part.</span>',
       cardBg: 'radial-gradient(80% 110% at 70% 20%, #3A2A33 0%, #1E181D 55%, #141114 100%)',
     },
     arene: {
@@ -61,7 +61,7 @@
       upper: true, radius: '0px', pill: '0px',
       emojis: ['🎮', '💀', '😤', '🔥', '🏆', '🤡'], labels: ['Manette', 'Mort', 'Rage', 'Feu', 'Victoire', 'Clown'],
       invite: 'Inviter dans l\'arène', placeholder: 'Écris dans le chat…', groupWord: 'L\'arène',
-      card: '<span class="cw-c1" style="font:900 40px/0.85 var(--cw-display);font-stretch:62%;text-transform:uppercase">L\'arène</span>',
+      card: '<span class="cw-c1" style="font:900 26px/0.85 var(--cw-display);font-stretch:62%;text-transform:uppercase">L\'arène</span><span class="cw-c2" style="display:flex;gap:3px;align-items:flex-end;height:26px"><i style="width:8px;height:40%;background:#263044"></i><i style="width:8px;height:100%;background:#D4FF3A"></i><i style="width:8px;height:70%;background:#D4FF3A"></i><i style="width:8px;height:50%;background:#3AD1FF"></i></span>',
       cardBg: '#0B0E14',
     },
     // Manga : cible n°1, mais la couleur (Simulcast jade ou Encre) n'est pas encore tranchée → pas encore sélectionnable.

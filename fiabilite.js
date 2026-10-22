@@ -64,7 +64,7 @@ net.createServer(client => {
   const pB = await panel(cB, 'kylian', SLOW);
   await pB.fill('#name', 'Kylian');
   await pB.click('#create'); await pB.click('#go'); await pB.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
-  await pB.click('#leave'); await pB.waitForSelector('#home:not(.hidden)'); await sleep(800);
+  await pB.click('#menuBtn'); await pB.click('#leave'); await pB.waitForSelector('#home:not(.hidden)'); await sleep(800);
   await pB.fill('#codeIn', `${BASE}/j/${code}?u=x`); await pB.click('#joinBtn');
   await pB.waitForFunction(c => document.querySelector('#code')?.textContent === c && !document.querySelector('#room').classList.contains('hidden'), code, { timeout: 15000 });
   await sleep(4000);

@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Cowatch">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
-:root{--bg:#0f0e13;--panel:#1a1820;--line:#2c2934;--text:#f2eff6;--muted:#9b95a8;--accent:#ff5a3c;--ok:#3ccf8e;--speak:#ffd23c}
+:root{--bg:#060A1C;--panel:#101A3C;--line:#26315A;--text:#F4F6FA;--muted:#C3C9D6;--accent:#F4F6FA;--accent-ink:#060A1C;--warn:#FF8A8A;--ok:#7CE0A3;--speak:#7CE0A3}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 main{max-width:720px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right)) 80px max(16px,env(safe-area-inset-left))}
@@ -23,7 +23,7 @@ h1{font-size:22px;margin:0 0 4px} .muted{color:var(--muted)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px}
 label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 input{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#121117;color:var(--text);font-size:15px}
-button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:var(--accent);color:#fff;font-weight:600}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 16px;background:var(--accent);color:var(--accent-ink);font-weight:700}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 button:disabled{opacity:.5;cursor:default}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -63,10 +63,10 @@ button:disabled{opacity:.5;cursor:default}
     <div class="row" style="margin-top:14px">
       <button id="go">Entrer dans le salon</button>
     </div>
-    <div id="joinErr" style="color:var(--accent);font-size:13px;margin-top:8px"></div>
+    <div id="joinErr" style="color:var(--warn);font-size:13px;margin-top:8px"></div>
     <div class="row" style="margin-top:10px"><button class="ghost hidden" id="install">📲 Installer l'appli Cowatch</button></div>
     <div id="iosInstall" class="hidden muted" style="font-size:13px;margin-top:10px">Astuce : pour retrouver Cowatch comme une appli, touche le bouton Partager de Safari puis « Sur l'écran d'accueil ».</div>
-    <div id="inAppWarn" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px">Tu es dans le navigateur d'une appli : le micro risque de ne pas marcher. Ouvre ce lien dans Safari ou Chrome.</div>
+    <div id="inAppWarn" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--warn);font-size:14px">Tu es dans le navigateur d'une appli : le micro risque de ne pas marcher. Ouvre ce lien dans Safari ou Chrome.</div>
   </section>
 
   <section id="in" class="hidden">
@@ -82,7 +82,7 @@ button:disabled{opacity:.5;cursor:default}
         <button id="mute">Couper mon micro</button>
         <label class="row desk-only" style="margin:0;color:var(--text)"><input type="checkbox" id="ptt" style="width:auto"> Appuyer pour parler (barre espace)</label>
       </div>
-      <div id="micMsg" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);font-size:14px"></div>
+      <div id="micMsg" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid var(--warn);font-size:14px"></div>
       <div class="peers" id="peers"></div>
       <div class="react" id="react"></div>
     </div>
@@ -171,7 +171,7 @@ $('#go').onclick = async () => {
 $('#micTest').onclick = async () => {
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch {}
   try { localStream = localStream || await getMic(); }
-  catch (e) { micError(e); $('#micTestMsg').textContent = $('#micMsg').textContent; $('#micTestMsg').style.color = 'var(--accent)'; return; }
+  catch (e) { micError(e); $('#micTestMsg').textContent = $('#micMsg').textContent; $('#micTestMsg').style.color = 'var(--warn)'; return; }
   $('#meterBox').classList.remove('hidden'); $('#micTestMsg').textContent = 'Micro OK si la barre bouge quand tu parles.'; $('#micTestMsg').style.color = '';
   const an = actx.createAnalyser(); an.fftSize = 512; actx.createMediaStreamSource(localStream).connect(an); const buf = new Uint8Array(512);
   const tick = () => { if ($('#join').classList.contains('hidden')) return; an.getByteTimeDomainData(buf); let s = 0; for (const v of buf) s += (v - 128) ** 2; $('#meter').style.width = Math.min(100, Math.sqrt(s / 512) * 4) + '%'; requestAnimationFrame(tick); };

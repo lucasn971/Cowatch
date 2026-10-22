@@ -51,7 +51,8 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   const F = B.v.frame({ url: /inner=1/ });
   await B.v.bringToFront(); await F.click('#fs');
   ok(await until(() => F.evaluate(() => !!document.fullscreenElement)), 'plein écran du lecteur (bouton du site) activé');
-  ok(await until(async () => !(await tabShown())), 'en plein écran : la languette est cachée');
+  ok(await until(() => F.evaluate(() => !!document.fullscreenElement?.querySelector('#cowatch-reopen'))), 'en plein écran (lecteur intégré) : la languette reste visible, dans le lecteur');
+  ok(!(await tabShown()), 'pas de 2e languette dans la page derrière');
   await A.p.fill('#chatIn', 'Quel but !'); await A.p.press('#chatIn', 'Enter');
   ok(await until(() => F.evaluate(() => !!document.fullscreenElement?.querySelector('#cowatch-chat') && document.fullscreenElement.querySelector('#cowatch-chat').innerText.includes('Quel but !'))), 'en plein écran (lecteur intégré) : le message s\'affiche sur la vidéo');
   ok(await until(() => F.evaluate(() => !!document.fullscreenElement?.querySelector('#cowatch-faces img, #cowatch-faces div[data-id]')), 20000), 'en plein écran (lecteur intégré) : visage de Lucas quand il parle');
