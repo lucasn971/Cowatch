@@ -12,7 +12,53 @@ const PORT = process.env.PORT || 8080;
 const STRUCTURED = fs.existsSync(path.join(__dirname, '..', 'web', 'index.html'));
 const WEB_DIR = STRUCTURED ? path.join(__dirname, '..', 'web') : __dirname;
 // En mode "vrac", on ne sert QUE les fichiers publics (pas le code du serveur ni de l'extension).
-const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png']);
+const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/sondage-anime.html', '/sondage-telerealite.html']);
+
+// ---------- Sondages ----------
+// Les réponses partent dans le Google Sheet de Lucas (script Apps Script « Cowatch sondages »).
+// Adresse du script : variable SONDAGE_SHEET_URL sur l'hébergeur, sinon la constante ci-dessous.
+const SONDAGE_SHEET_URL = process.env.SONDAGE_SHEET_URL || '';
+const SONDAGE_CLE = 'cowatch-sondage-2026';
+const SONDAGE_PAGES = { '/sondage/anime': '/sondage-anime.html', '/sondage/telerealite': '/sondage-telerealite.html', '/sondage/tele': '/sondage-telerealite.html' };
+const sondageParIp = new Map(); // garde-fou anti-spam : 20 envois par heure et par adresse
+function sondageAutorise(ip) {
+  const now = Date.now(), h = (sondageParIp.get(ip) || []).filter(t => now - t < 3600e3);
+  if (h.length >= 20) return false;
+  h.push(now); sondageParIp.set(ip, h); return true;
+}
+function nettoieSondage(d) {
+  if (!d || (d.track !== 'anime' && d.track !== 'tele') || typeof d.answers !== 'object' || !d.answers) return null;
+  const answers = {};
+  for (const [k, v] of Object.entries(d.answers).slice(0, 30)) {
+    if (!/^[a-z_]{1,30}$/.test(k)) continue;
+    if (Array.isArray(v)) answers[k] = v.slice(0, 15).map(x => String(x).slice(0, 40));
+    else if (v != null) answers[k] = String(v).slice(0, k === 'email' ? 120 : 40);
+  }
+  return { track: d.track, v: Number(d.v) || 1, duree_s: Math.max(0, Math.min(3600, Number(d.duree_s) || 0)), answers };
+}
+function recoitSondage(req, res) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  let body = '';
+  req.on('data', c => { body += c; if (body.length > 20000) req.destroy(); });
+  req.on('end', async () => {
+    let d = null; try { d = nettoieSondage(JSON.parse(body)); } catch (e) {}
+    if (!d) { res.statusCode = 400; res.end('{"ok":false}'); return; }
+    if (!sondageAutorise(ip)) { res.statusCode = 429; res.end('{"ok":false}'); return; }
+    d.date = new Date().toISOString();
+    console.log('SONDAGE ' + JSON.stringify(d)); // copie de secours dans les journaux Render
+    if (!SONDAGE_SHEET_URL) { res.setHeader('content-type', 'application/json'); res.end('{"ok":true,"sheet":false}'); return; }
+    try {
+      const r = await fetch(SONDAGE_SHEET_URL, { method: 'POST', headers: { 'content-type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cle: SONDAGE_CLE, ...d }), redirect: 'follow' });
+      const txt = await r.text();
+      const ok = r.ok && /"ok"\s*:\s*true/.test(txt);
+      if (!ok) console.log('SONDAGE ERREUR SHEET ' + r.status + ' ' + txt.slice(0, 200));
+      res.statusCode = ok ? 200 : 502; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ ok }));
+    } catch (e) {
+      console.log('SONDAGE ERREUR SHEET ' + e.message);
+      res.statusCode = 502; res.end('{"ok":false}');
+    }
+  });
+}
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 // ---------- HTTP statique ----------
@@ -31,7 +77,9 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ rooms: rooms.size, clients: [...rooms.values()].reduce((n, r) => n + r.size, 0), totals: stats }));
     return;
   }
+  if (url.pathname === '/api/sondage' && req.method === 'POST') { recoitSondage(req, res); return; }
   let p = url.pathname === '/' ? '/index.html' : url.pathname;
+  if (SONDAGE_PAGES[p.replace(/\/$/, '')]) p = SONDAGE_PAGES[p.replace(/\/$/, '')];
   if (/^\/s\/[A-Za-z0-9-]+$/.test(p)) p = '/index.html'; // salon web sans extension /s/CODE
   if (/^\/j\/[A-Za-z0-9-]+$/.test(p)) p = '/join.html';  // invitation /j/CODE?u=<page de la plateforme>
   if (!STRUCTURED && !PUBLIC_FILES.has(p)) { res.statusCode = 404; res.end('404'); return; }
