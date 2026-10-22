@@ -53,6 +53,9 @@
     } catch {}
     const epoch = t + (Number(v.dataset.cowatchEpoch) || 0); // cowatchEpoch : uniquement pour les tests
     if (ok(epoch * 1000)) return { pos: epoch, how: 'lecteur' };
+    // Canal+ compte en secondes depuis le 1er janvier 2015 (et non 1970) : constaté en vrai le 22/10.
+    const c2015 = t + 1420070400;
+    if (t > 1e8 && ok(c2015 * 1000)) return { pos: c2015, how: 'lecteur' };
     const ast = Number(v.getAttribute('data-cowatch-ast'));
     if (ast && ok(ast + t * 1000)) return { pos: ast / 1000 + t, how: 'dash' };
     return { pos: t, how: 'aucune' };
@@ -286,8 +289,8 @@
     } else {
       if (box.childElementCount >= 14) box.firstElementChild.remove(); // avalanche : les plus anciennes laissent la place
       const el = document.createElement('div'); el.className = 'cw-rx';
-      const x = 56 + Math.random() * 36;
-      el.style.cssText = `position:absolute;left:${x}%;bottom:120px;display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform,opacity`;
+      const x = 54 + Math.random() * 26; // partie droite de l'image, sans toucher le bord ni la languette
+      el.style.cssText = `position:absolute;left:min(${x}%, calc(100% - 190px));bottom:120px;display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform,opacity`;
       const bub = document.createElement('div'); bub.className = 'cw-emoji'; bub.textContent = emoji;
       const lab = document.createElement('span'); lab.className = 'cw-who';
       lab.style.cssText = `background:${rgba(t.bg, .8)};color:${t.text};border-radius:99px;padding:2px 9px;font:700 12px ${t.body};white-space:nowrap`;
@@ -435,7 +438,7 @@
     if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
-    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
+    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); loadFonts(); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
