@@ -10,7 +10,14 @@
     server: '', code: null, me: null, tabId: null, mode: 'vod', muted: false, needMic: false, err: '',
     video: false, live: null, calib: null, autosync: null,
     joining: false, wake: false, micErr: '', noAutoClock: false,
+    theme: 'vestiaire', owner: false, pronos: [], myGoal: null, title: '',
   };
+  let wantTheme = 'vestiaire', lastPos = null; // lastPos : dernière position de la vidéo de l'onglet {pos, kind, playing, at}
+  // Position actuelle (extrapolée) de la vidéo : jointe aux réactions pour qu'elles arrivent au bon moment chez chacun.
+  function posNow() {
+    if (!lastPos || Date.now() - lastPos.at > 10000) return {};
+    return { pos: +(lastPos.pos + (lastPos.playing ? (Date.now() - lastPos.at) / 1000 : 0)).toFixed(3), kind: lastPos.kind };
+  }
   // Identifiant stable de ce navigateur : si on se reconnecte, le serveur remplace l'ancienne présence (plus de « Lucas 2 »).
   let CID = ''; try { CID = localStorage.getItem('cowatchCid') || ''; } catch {}
   if (!CID) { CID = crypto.randomUUID(); try { localStorage.setItem('cowatchCid', CID); } catch {} }
@@ -31,7 +38,7 @@
   }
   function snapshot() {
     return { ...S, inRoom: !!(S.me && S.me.id),
-      peers: [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.avatar || null, state: p.state || '', speaking: !!p.speaking, self: p.id === S.me?.id })) };
+      peers: [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.avatar || null, state: p.state || '', speaking: !!p.speaking, self: p.id === S.me?.id, muted: p.id === S.me?.id ? S.muted : !!p.muted })) };
   }
   function addLog(item) { log.push(item); if (log.length > 150) log.shift(); EMIT({ ev: 'log', item }); }
   const sys = text => addLog({ kind: 'sys', text, at: Date.now() });
@@ -44,8 +51,8 @@
   }
   function pushRoster() {
     if (!S.me?.id) return;
-    const people = [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.id === S.me.id ? myAvatar : p.avatar || null, self: p.id === S.me.id, muted: p.id === S.me.id ? S.muted : false }));
-    toTab({ t: 'roster', people });
+    const people = [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.id === S.me.id ? myAvatar : p.avatar || null, self: p.id === S.me.id, muted: p.id === S.me.id ? S.muted : !!p.muted }));
+    toTab({ t: 'roster', people, theme: S.theme, pronos: S.pronos });
   }
 
   // ---------- Commandes reçues du panneau ----------
@@ -59,8 +66,11 @@
         if (!sendS({ t: 'chat', text: v })) { outbox.push({ t: 'chat', text: v }); sys('Message en attente : reconnexion…'); }
         break;
       }
-      case 'reaction': sendS({ t: 'reaction', emoji: m.emoji }); break;
-      case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
+      case 'reaction': sendS({ t: 'reaction', emoji: m.emoji, ...posNow() }); break;
+      case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); sendS({ t: 'mute', muted: S.muted }); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
+      case 'theme': if (S.code) sendS({ t: 'theme', theme: m.theme }); else wantTheme = m.theme; break;
+      case 'prono': sendS({ t: 'prono', score: m.score }); break;
+      case 'goalCancel': if (S.myGoal) { sendS({ t: 'goal-cancel', id: S.myGoal.id }); S.myGoal = null; snap(); } break;
       case 'avatar': myAvatar = m.avatar || null; sendS({ t: 'avatar', avatar: myAvatar }); pushRoster(); break;
       case 'calibStart': sendS({ t: 'calib-start', label: 'le score change à l\'écran (ou le prochain coup de sifflet)' }); break;
       case 'top': if (S.calib && !S.calib.myTop) { S.calib.myTop = true; sendS({ t: 'top', id: S.calib.id }); snap(); } break;
@@ -79,6 +89,8 @@
     }
     if (m.cmd === 'hello' && lastWelcome) { toTab(lastWelcome); pushRoster(); }
     if (m.cmd === 'video') { S.video = !!m.found; snap(); }
+    if (m.cmd === 'pos') lastPos = { pos: +m.pos, kind: m.kind, playing: !!m.playing, at: Date.now() };
+    if (m.cmd === 'title' && m.title !== S.title) { S.title = String(m.title || '').slice(0, 80); snap(); }
     if (m.cmd === 'kind') { S.live = !!m.live; autoMode(); snap(); }
   }
   chrome.runtime.onMessage.addListener((m, sender, reply) => {
@@ -100,6 +112,7 @@
     if (S.code) leave(true);
     S.server = m.server; S.tabId = m.tabId ?? S.tabId; myAvatar = m.avatar || null; S.err = '';
     S.me = { name: m.name }; S.code = code; S.joining = true; S.wake = false;
+    if (m.theme) wantTheme = m.theme;
     retryS = retryP = 0; outbox = []; snap();
     // Micro et serveurs de voix en parallèle : la connexion au salon n'attend pas.
     micReady = getMic();
@@ -117,7 +130,7 @@
     goneTimers.forEach(clearTimeout); goneTimers.clear(); clearTimeout(lostTimer); lostShown = false;
     localStream?.getTracks().forEach(t => t.stop()); localStream = null;
     toTab({ t: 'disconnected' });
-    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false, micErr: '', joining: false, wake: false });
+    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false, micErr: '', joining: false, wake: false, owner: false, pronos: [], myGoal: null });
     lastWelcome = null; if (!quiet) snap(true);
     // Le moteur reste ouvert : on peut recréer ou rejoindre un salon tout de suite.
   }
@@ -131,7 +144,7 @@
   async function reconnectWithMic() {
     micReady = getMic(); await micReady; if (!localStream || !S.me?.id) return;
     for (const [id, p] of peers) if (p.kind === 'salon' && id !== S.me.id) { p.pc?.close(); p.pc = null; await call(id); }
-    watchLevel(S.me.id, localStream); applyMic(); sys('Micro activé');
+    watchLevel(S.me.id, localStream); applyMic(); // l'état du micro se voit sur l'avatar (plus de message)
   }
 
   const wsUrl = () => { const u = new URL(S.server); u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'; u.pathname = '/'; return u.toString(); };
@@ -149,7 +162,7 @@
     // Serveur gratuit endormi : il met jusqu'à ~30 s à se réveiller. On le dit au lieu de rester muet.
     const slow = setTimeout(() => { if (ws === wsS && S.joining) { S.wake = true; snap(); } }, 2500);
     ws.onopen = () => {
-      ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'salon', cid: CID, avatar: myAvatar || undefined }));
+      ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'salon', cid: CID, avatar: myAvatar || undefined, theme: wantTheme }));
       clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000);
     };
     ws.onclose = () => {
@@ -175,8 +188,9 @@
         peers.set(S.me.id, { id: S.me.id, name: S.me.name, kind: 'salon', avatar: myAvatar, self: true, state: 'connected' });
         for (const p of m.peers) peers.set(p.id, { ...p });
         S.mode = m.mode === 'live' ? 'live' : 'vod';
+        S.theme = m.theme || S.theme; S.owner = !!m.owner; S.pronos = m.pronos || [];
         clearTimeout(lostTimer);
-        if (first) sys(`Tu es dans le salon ${S.code}.`); else if (back && lostShown) sys('Reconnecté ✓');
+        if (first) sys('Salon prêt'); else if (back && lostShown) sys('Reconnecté');
         lostShown = false;
         pushRoster(); autoMode(); snap(true);
         const q = outbox; outbox = []; q.forEach(sendS);
@@ -192,6 +206,13 @@
           pushRoster();
         }
         snap();
+      }
+      if (m.t === 'mute') { const p = peers.get(m.id); if (p) { p.muted = !!m.muted; pushRoster(); snap(); } }
+      if (m.t === 'theme') { S.theme = m.theme; if (lastWelcome) lastWelcome.theme = m.theme; sys(`Ambiance : ${(self.CowatchThemes?.THEMES[m.theme] || {}).name || m.theme}`); pushRoster(); snap(); }
+      if (m.t === 'pronos') { S.pronos = m.items || []; pushRoster(); snap(); }
+      if (m.t === 'goal' && m.from === S.me.id) { // c'est moi qui ai crié : je peux annuler (VAR) pendant 20 s
+        S.myGoal = { id: m.id, until: Date.now() + 20000 }; snap();
+        setTimeout(() => { if (S.myGoal && S.myGoal.id === m.id) { S.myGoal = null; snap(); } }, 20000);
       }
       if (m.t === 'avatar') { const p = peers.get(m.id); if (p) { p.avatar = m.avatar || null; pushRoster(); snap(); } }
       if (m.t === 'peer-left') { const p = peers.get(m.id); if (p) { p.pc?.close(); p.audio?.remove(); peers.delete(m.id); if (p.kind === 'salon') { const n = p.name; clearTimeout(goneTimers.get(n)); goneTimers.set(n, setTimeout(() => { goneTimers.delete(n); sys(`${n} est parti`); }, 10000)); pushRoster(); } snap(); } }
@@ -225,9 +246,9 @@
     ws.onmessage = ev => {
       if (ws !== wsP) return;
       const m = JSON.parse(ev.data);
-      if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode }; toTab(lastWelcome); }
+      if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(lastWelcome); pushRoster(); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
-      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction'].includes(m.t)) toTab(m);
+      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme'].includes(m.t)) toTab(m);
     };
   }
   // Mode choisi automatiquement : direct (match) ou replay / série, selon la vidéo de l'onglet.

@@ -68,6 +68,7 @@
         "http://localhost/*"
       ],
       "js": [
+        "themes.js",
         "player.js"
       ],
       "all_frames": true,
@@ -113,5 +114,24 @@
       },
       "description": "Couper / réactiver le micro Cowatch"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "fonts/*.woff"
+      ],
+      "matches": [
+        "*://*.canalplus.com/*",
+        "*://*.paramountplus.com/*",
+        "*://*.tf1.fr/*",
+        "*://*.primevideo.com/*",
+        "*://*.youtube.com/*",
+        "*://*.netflix.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.amazon.fr/*",
+        "*://*.amazon.com/*",
+        "http://localhost/*"
+      ]
+    }
+  ]
 }

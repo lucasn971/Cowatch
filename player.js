@@ -129,10 +129,10 @@
     alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); } }, sec * 1000);
   }
 
-  let bannerEl;
+  // ---------- Calques Cowatch sur la vidéo ----------
   // En plein écran, seul l'élément affiché en plein écran est visible : on y place nos calques.
   function layerParent() { const f = document.fullscreenElement || document.webkitFullscreenElement; return f && f.tagName !== 'VIDEO' && f.tagName !== 'IFRAME' ? f : document.documentElement; }
-  // Qui dessine les visages et les messages ? La page, sauf quand le plein écran du site se fait dans un lecteur intégré
+  // Qui dessine les calques ? La page, sauf quand le plein écran du site se fait dans un lecteur intégré
   // (iframe, comme TF1 ou Canal+) : c'est alors ce lecteur, seul visible, qui les affiche.
   function isDisplayFrame() {
     const f = document.fullscreenElement || document.webkitFullscreenElement;
@@ -140,13 +140,36 @@
     if (window.top !== window) return false;
     return !(f && f.tagName === 'IFRAME');
   }
-  function banner(txt) {
-    if (!isDisplayFrame()) return;
-    bannerEl = bannerEl || Object.assign(document.createElement('div'), { style: 'position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:70vw;z-index:2147483647;background:#ff5a3c;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:8px;pointer-events:none' });
-    bannerEl.textContent = txt; layerParent().append(bannerEl);
-    clearTimeout(bannerEl._t); bannerEl._t = setTimeout(() => bannerEl.remove(), 3500);
+  const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches; // « moins d'animations » demandé : tout s'arrête
+  const TT = self.CowatchThemes;
+  let theme = TT ? TT.DEFAULT : 'vestiaire';
+  const th = () => (TT ? TT.get(theme) : { emojis: ['😂', '🔥', '😱', '👀', '👏', '💀'], labels: [], bg: '#060A1C', text: '#F4F6FA', accent: '#F4F6FA', accentInk: '#060A1C', speaking: '#7CE0A3', display: 'system-ui', body: 'system-ui', radius: '10px' });
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  // Un calque par usage, tous replacés dans le plein écran quand il change.
+  const layers = {};
+  function layer(id, css) {
+    if (!isDisplayFrame()) { layers[id]?.remove(); return null; }
+    let el = layers[id];
+    if (!el) { el = layers[id] = document.createElement('div'); el.id = id; el.style.cssText = 'position:fixed;z-index:2147483646;pointer-events:none;' + css; }
+    const par = layerParent(); if (el.parentNode !== par) par.append(el);
+    return el;
   }
-
+  // Polices du Vestiaire, fournies avec l'extension (chargées en mémoire : la page ne peut pas les bloquer).
+  const fontsDone = new Set();
+  function loadFonts() {
+    if (theme !== 'vestiaire' || fontsDone.has(theme)) return; fontsDone.add(theme);
+    const list = [['Barlow Condensed', '800', 'BarlowCondensed-ExtraBold'], ['Barlow Condensed', '700', 'BarlowCondensed-Bold'], ['Barlow', '600', 'Barlow-SemiBold'], ['Barlow', '400', 'Barlow-Regular']];
+    for (const [fam, w, f] of list) fetch(chrome.runtime.getURL(`fonts/${f}.woff`)).then(r => r.arrayBuffer()).then(buf => { const ff = new FontFace(fam, buf, { weight: w }); return ff.load(); }).then(ff => document.fonts.add(ff)).catch(() => {});
+  }
+  let bannerEl;
+  function banner(txt) {
+    const box = layer('cowatch-banner', 'top:14px;left:50%;transform:translateX(-50%);max-width:70vw'); if (!box) return;
+    const t = th();
+    box.style.cssText += `;background:${rgba(t.bg, .82)};color:${t.text};font:600 13px ${t.body};padding:8px 14px;border-radius:${t.radius};border:1px solid ${rgba(t.text, .18)}`;
+    box.textContent = txt; box.style.display = 'block'; bannerEl = box;
+    clearTimeout(box._t); box._t = setTimeout(() => { box.style.display = 'none'; }, 3500);
+  }
 
   // Diagnostic (lecture seule) : décrit le lecteur pour savoir si un calage 100 % automatique est possible.
   function rangeList(r) { const a = []; try { for (let i = 0; i < r.length; i++) a.push([+r.start(i).toFixed(2), +r.end(i).toFixed(2)]); } catch {} return a; }
@@ -172,31 +195,32 @@
     return out;
   }
 
-  // ---------- Visages : photo de celui qui parle, en haut à droite de la vidéo ----------
-  let roster = new Map(), faceBox = null, chatBox = null;
+  // ---------- Celui qui parle : lui seul, avatar rond + prénom, anneau qui pulse ----------
+  let roster = new Map(), pronos = [];
   const speaking = new Map(); // id -> timer de disparition
+  const speakingNow = new Set(); // qui parle en ce moment (gardé même quand ce cadre n'affiche rien)
+  function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
   function faceLayer() {
-    if (!isDisplayFrame()) { faceBox?.remove(); return null; }
-    if (!faceBox) {
-      faceBox = document.createElement('div'); faceBox.id = 'cowatch-faces';
-      faceBox.style.cssText = 'position:fixed;top:18px;left:18px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-start;gap:10px;pointer-events:none;font:600 12px system-ui,sans-serif';
-    }
-    const par = layerParent(); if (faceBox.parentNode !== par) par.append(faceBox);
-    return faceBox;
+    // Vestiaire : le prono occupe le haut à gauche, celui qui parle passe en bas à gauche (maquette D3).
+    const bottom = theme === 'vestiaire';
+    const box = layer('cowatch-faces', 'display:flex;flex-direction:column;align-items:flex-start;gap:10px');
+    if (box) { box.style.left = '24px'; box.style.top = bottom ? 'auto' : '24px'; box.style.bottom = bottom ? '28px' : 'auto'; box.style.font = `600 14px ${th().body}`; }
+    return box;
   }
-  function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; }
   function faceEl(p) {
-    const w = document.createElement('div'); w.dataset.id = p.id;
-    w.style.cssText = 'display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(-8px)';
-    const lab = document.createElement('span'); lab.textContent = p.self ? 'Toi' : p.name;
-    lab.style.cssText = 'color:#fff;background:rgba(15,14,19,.72);padding:3px 8px;border-radius:999px;text-shadow:0 1px 2px #000';
+    const t = th(), w = document.createElement('div'); w.dataset.id = p.id;
+    w.style.cssText = `display:flex;align-items:center;gap:10px;background:${rgba(t.bg, .74)};color:${t.text};border-radius:99px;padding:6px 16px 6px 6px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(-8px)`;
     let pic;
     if (p.avatar) { pic = document.createElement('img'); pic.src = p.avatar; pic.alt = ''; pic.style.objectFit = 'cover'; }
-    else { pic = document.createElement('div'); pic.textContent = (p.name || '?').charAt(0).toUpperCase(); pic.style.cssText = `display:grid;place-items:center;color:#fff;font-size:20px;background:${colorOf(p.name)}`; }
-    pic.style.width = pic.style.height = '52px'; pic.style.borderRadius = '50%'; pic.style.boxShadow = '0 0 0 3px #ffd23c,0 6px 18px rgba(0,0,0,.45)';
-    w.append(pic, lab); return w;
+    else { pic = document.createElement('div'); pic.textContent = (p.name || '?').charAt(0).toUpperCase(); pic.style.cssText = `display:grid;place-items:center;color:#fff;font-size:17px;font-weight:700;background:hsl(${colorOf(p.name)} 45% 40%)`; }
+    pic.style.width = pic.style.height = '40px'; pic.style.borderRadius = '50%'; pic.style.flex = 'none';
+    const lab = document.createElement('span'); lab.textContent = p.self ? 'Toi' : p.name;
+    w.append(pic, lab);
+    // Onde qui s'échappe de l'avatar, en boucle de 1,4 s tant qu'il parle (rien si « moins d'animations »)
+    if (!calm()) pic.animate([{ boxShadow: `0 0 0 0 ${rgba(t.speaking, .6)}` }, { boxShadow: `0 0 0 12px ${rgba(t.speaking, 0)}`, offset: .7 }, { boxShadow: `0 0 0 0 ${rgba(t.speaking, 0)}` }], { duration: 1400, iterations: Infinity, easing: 'ease-out' });
+    else pic.style.boxShadow = `0 0 0 3px ${t.speaking}`;
+    return w;
   }
-  const speakingNow = new Set(); // qui parle en ce moment (gardé même quand ce cadre n'affiche rien)
   function showFace(id, on) {
     if (on) speakingNow.add(id); else speakingNow.delete(id);
     const box = faceLayer(); if (!box) return;
@@ -209,107 +233,218 @@
       speaking.set(id, setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 260); }, 900));
     }
   }
-  // Micro coupé : petite pastille permanente pour le savoir même en plein écran.
+  // Micro coupé : petite pastille pour le savoir même en plein écran.
   function renderMuted() {
     const box = faceLayer(); if (!box) return;
     const self = [...roster.values()].find(p => p.self);
     let pill = box.querySelector('[data-muted]');
     if (self && self.muted) {
-      if (!pill) { pill = document.createElement('div'); pill.dataset.muted = '1'; pill.textContent = '🔇 Micro coupé'; pill.style.cssText = 'color:#fff;background:rgba(255,90,60,.9);padding:4px 10px;border-radius:999px'; box.prepend(pill); }
+      if (!pill) { pill = document.createElement('div'); pill.dataset.muted = '1'; pill.textContent = '🔇 Micro coupé'; pill.style.cssText = `color:${th().text};background:${rgba(th().bg, .8)};padding:5px 12px;border-radius:99px;font-size:12px`; box.prepend(pill); }
     } else pill?.remove();
   }
+  function rebuildFaces() { const box = faceLayer(); if (!box) return; box.querySelectorAll('[data-id]').forEach(e => e.remove()); speakingNow.forEach(id => showFace(id, true)); renderMuted(); }
   function toast(text) { banner(text); }
-  // ---------- Messages du chat : en bas à droite, en transparence, ils s'effacent seuls ----------
-  function chatLayer() {
-    if (!isDisplayFrame()) { chatBox?.remove(); return null; }
-    if (!chatBox) {
-      chatBox = document.createElement('div'); chatBox.id = 'cowatch-chat';
-      chatBox.style.cssText = 'position:fixed;right:24px;bottom:96px;z-index:2147483647;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,40vw);pointer-events:none;font:14px/1.35 system-ui,sans-serif';
-    }
-    const par = layerParent(); if (chatBox.parentNode !== par) par.append(chatBox);
-    return chatBox;
-  }
-  function showChat(name, text, big) {
-    const box = chatLayer(); if (!box) return;
-    const p = [...roster.values()].find(x => x.name === name);
-    const d = document.createElement('div');
-    d.style.cssText = 'color:#fff;background:rgba(15,14,19,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:6px 11px;border-radius:14px;text-shadow:0 1px 2px rgba(0,0,0,.6);transition:opacity .5s;opacity:0;word-wrap:break-word;max-width:100%';
-    const b = document.createElement('b'); b.textContent = (p && p.self ? 'Toi' : name) + ' '; b.style.color = '#ffd23c';
-    const t = document.createElement('span'); t.textContent = text; if (big) t.style.fontSize = '22px';
-    d.append(b, t); box.append(d);
-    requestAnimationFrame(() => { d.style.opacity = '1'; });
-    while (box.children.length > 5) box.firstChild.remove();
-    setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 600); }, 9000);
-  }
-  document.addEventListener('fullscreenchange', () => {
-    faceLayer(); chatLayer(); if (reactBox) reactLayer(); renderMuted(); speakingNow.forEach(id => showFace(id, true)); if (bannerEl?.isConnected) isDisplayFrame() ? layerParent().append(bannerEl) : bannerEl.remove();
-    renderReopen();
-  });
 
-  // ---------- Réactions : les emojis montent sur la vidéo, dispersés, entourés de la couleur de la personne ----------
-  // Pas de pseudo (la couleur suffit à reconnaître qui réagit), rien dans le chat, et jamais plus de 14 à l'écran.
-  let reactBox = null;
-  function reactLayer() {
-    if (!isDisplayFrame()) { reactBox?.remove(); return null; }
-    if (!reactBox) { reactBox = document.createElement('div'); reactBox.id = 'cowatch-react'; reactBox.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;overflow:hidden'; }
-    const par = layerParent(); if (reactBox.parentNode !== par) par.append(reactBox);
-    return reactBox;
+  // ---------- Messages : en bas à droite, semi-transparents, ils glissent puis s'effacent (≈ 6 s) ----------
+  function chatLayer() { return layer('cowatch-chat', 'right:24px;bottom:110px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,40vw)'); }
+  function showChat(name, text) {
+    const box = chatLayer(); if (!box) return;
+    const t = th(), p = [...roster.values()].find(x => x.name === name);
+    const d = document.createElement('div');
+    d.style.cssText = `color:${t.text};background:${rgba(t.bg, .62)};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:8px 12px;border-radius:12px;font:14px/1.35 ${t.body};word-wrap:break-word;max-width:100%`;
+    const b = document.createElement('b'); b.textContent = (p && p.self ? 'Toi' : name) + ' ';
+    const x = document.createElement('span'); x.textContent = text;
+    d.append(b, x); box.append(d);
+    if (!calm()) d.animate([{ opacity: 0, transform: 'translateX(20px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
+    while (box.children.length > 5) box.firstChild.remove();
+    setTimeout(() => { const f = d.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }); f.onfinish = () => d.remove(); }, 6000);
   }
+
+  // ---------- Zéro spoil : chacun voit une réaction quand ce moment arrive dans SA vidéo ----------
+  // La réaction porte la position de la vidéo de celui qui l'envoie ; si ma vidéo est en retard, j'attends d'y être.
+  function myPos() {
+    if (!video) return null;
+    if (mode === 'live') { const r = realPos(video); return r.how === 'aucune' ? null : { pos: r.pos, kind: 'real' }; }
+    return { pos: video.currentTime, kind: 'media' };
+  }
+  function waitFor(m) { // millisecondes à attendre ; null = impossible de comparer
+    const mine = myPos(); if (!mine || !Number.isFinite(m.pos) || mine.kind !== m.kind) return null;
+    const ms = (m.pos - mine.pos) * 1000 / (video.playbackRate || 1);
+    return ms > 20000 ? null : Math.max(0, ms); // plus de 20 s d'écart : pas le même moment, on ne compare pas
+  }
+
+  // ---------- Réactions v2 : elles montent sur la vidéo, avec le prénom ; le même émoji tapé plusieurs fois grossit (×N) ----------
+  const groups = new Map(); // émoji -> bulle en cours
+  const SIZES = [36, 52, 78]; // 1 réaction : petit · 2 : moyen · 3 et plus : grand (façon Messenger)
+  function reactLayer() { return layer('cowatch-react', 'inset:0;overflow:hidden'); }
   function showReaction(name, emoji) {
     const box = reactLayer(); if (!box) return;
-    if (box.childElementCount >= 14) box.firstElementChild.remove(); // en cas d'avalanche, les plus anciennes laissent la place
-    let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; // même couleur que l'avatar de la personne
-    const el = document.createElement('div'); el.textContent = emoji;
-    const x = 58 + Math.random() * 36, size = 30 + Math.random() * 10; // partie droite de l'image, au-dessus des commandes
-    el.style.cssText = `position:absolute;left:${x}%;bottom:110px;font-size:${size}px;line-height:1;width:${size * 1.45}px;height:${size * 1.45}px;display:grid;place-items:center;border-radius:50%;background:rgba(15,14,19,.55);box-shadow:0 0 0 3px hsl(${h},75%,58%),0 4px 14px rgba(0,0,0,.4);will-change:transform,opacity`;
-    box.append(el);
-    const dx = (Math.random() - 0.5) * 90, rise = 220 + Math.random() * 140;
-    const anim = el.animate([
-      { transform: 'translate(0,0) scale(.6)', opacity: 0 },
-      { transform: `translate(${dx * 0.3}px,-40px) scale(1.1)`, opacity: 1, offset: 0.15 },
-      { transform: `translate(${dx * 0.7}px,-${rise * 0.65}px) scale(1)`, opacity: 1, offset: 0.65 },
-      { transform: `translate(${dx}px,-${rise}px) scale(1)`, opacity: 0 },
-    ], { duration: 2600 + Math.random() * 800, easing: 'ease-out' });
-    anim.onfinish = () => el.remove();
+    const t = th(), now = Date.now();
+    let g = groups.get(emoji);
+    if (g && now - g.last < 1500 && g.el.isConnected) { // même émoji en même temps : une seule bulle qui grossit
+      g.count++; g.last = now; if (!g.names.includes(name)) g.names.push(name);
+    } else {
+      if (box.childElementCount >= 14) box.firstElementChild.remove(); // avalanche : les plus anciennes laissent la place
+      const el = document.createElement('div'); el.className = 'cw-rx';
+      const x = 56 + Math.random() * 36;
+      el.style.cssText = `position:absolute;left:${x}%;bottom:120px;display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform,opacity`;
+      const bub = document.createElement('div'); bub.className = 'cw-emoji'; bub.textContent = emoji;
+      const lab = document.createElement('span'); lab.className = 'cw-who';
+      lab.style.cssText = `background:${rgba(t.bg, .8)};color:${t.text};border-radius:99px;padding:2px 9px;font:700 12px ${t.body};white-space:nowrap`;
+      el.append(bub, lab); box.append(el);
+      g = { el, bub, lab, count: 1, names: [name], last: now, dx: (Math.random() - .5) * 90 };
+      groups.set(emoji, g);
+    }
+    const size = SIZES[Math.min(g.count, 3) - 1], hue = colorOf(g.names[0]);
+    g.bub.style.cssText = `font-size:${size}px;line-height:1;width:${size * 1.4}px;height:${size * 1.4}px;display:grid;place-items:center;border-radius:50%;background:${rgba(t.bg, .55)};box-shadow:0 0 0 3px hsl(${hue},75%,58%),0 4px 14px rgba(0,0,0,.4);transition:font-size .2s,width .2s,height .2s`;
+    g.lab.textContent = g.names.length > 1 ? `${g.names[0]} +${g.names.length - 1}${g.count > g.names.length ? ` ×${g.count}` : ''}` : g.count > 1 ? `${name} ×${g.count}` : name;
+    // Montée de ≈ 210 px en ≈ 3 s, fondu en fin de course ; relancée à chaque nouvelle réaction identique.
+    g.anim?.cancel();
+    const rise = 200 + Math.random() * 20, dx = g.dx;
+    g.anim = calm()
+      ? g.el.animate([{ opacity: 1 }, { opacity: 1, offset: .8 }, { opacity: 0 }], { duration: 2500 })
+      : g.el.animate([
+        { transform: 'translate(0,0) scale(.6)', opacity: 0 },
+        { transform: `translate(${dx * .3}px,-30px) scale(${g.count > 1 ? 1.15 : 1.05})`, opacity: 1, offset: .12 },
+        { transform: `translate(${dx * .7}px,-${rise * .65}px) scale(1)`, opacity: 1, offset: .7 },
+        { transform: `translate(${dx}px,-${rise}px) scale(1)`, opacity: 0 },
+      ], { duration: 3000, easing: 'ease-out' });
+    const anim = g.anim, el = g.el;
+    anim.onfinish = () => { el.remove(); if (groups.get(emoji)?.el === el) groups.delete(emoji); };
+  }
+  function onReaction(m) {
+    const ms = waitFor(m);
+    if (ms) setTimeout(() => showReaction(m.name, m.emoji), ms); else showReaction(m.name, m.emoji);
   }
 
-  // ---------- Bouton « rouvrir Cowatch » ----------
-  // Quand on est dans un salon et que le panneau est fermé, une petite languette sur le bord droit de la page le rouvre.
-  // Elle disparaît pendant le plein écran du programme, et revient dès qu'on en sort.
-  let inRoom = false, panelOpen = true, unread = 0, reopenEl = null;
-  function renderReopen() {
-    if (window.top !== window) return;
-    const show = inRoom && !panelOpen && !document.fullscreenElement;
+  // ---------- Vestiaire : le BUUUT ----------
+  // Un seul par but (le serveur filtre 20 s), affiché quand le but arrive dans MA vidéo, jamais avant.
+  // Dans le doute (positions impossibles à comparer en direct), on n'affiche rien plutôt que de spoiler.
+  const goals = new Map(); // id -> {timer, shownAt}
+  function onGoal(m) {
+    if (calm()) return; // « moins d'animations » : pas de BUUUT
+    const ms = waitFor(m);
+    if (ms == null && mode === 'live') return;
+    const g = { timer: setTimeout(() => { g.timer = null; showGoal(m); g.shownAt = Date.now(); }, ms || 0) };
+    goals.set(m.id, g);
+  }
+  function onGoalCancel(m) {
+    const g = goals.get(m.id); if (!g) return;
+    if (g.timer) { clearTimeout(g.timer); goals.delete(m.id); return; } // pas encore vu : on ne montre rien
+    layers['cowatch-buuut']?.replaceChildren();
+    banner('But refusé (VAR). Lâche pas !');
+  }
+  function showGoal(m) {
+    const box = layer('cowatch-buuut', 'inset:0;display:flex;align-items:center;justify-content:center'); if (!box) return;
+    loadFonts(); box.replaceChildren();
+    const t = th();
+    const flash = document.createElement('div');
+    flash.style.cssText = `position:absolute;inset:0;background:radial-gradient(55% 45% at 50% 50%, ${rgba(t.text, .22)} 0%, ${rgba(t.text, 0)} 70%)`;
+    const wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:6px';
+    const big = document.createElement('span'); big.textContent = 'Buuut';
+    big.style.cssText = `font:800 min(24vh,240px)/.8 ${t.display};text-transform:uppercase;letter-spacing:.01em;background:linear-gradient(180deg,#FFFFFF 0%,#B9C1D3 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 24px rgba(0,0,0,.5))`;
+    const who = document.createElement('span'); who.textContent = `${m.by} l'a crié en premier`;
+    who.style.cssText = `font:600 min(2.6vh,22px) ${t.body};color:${t.text};text-shadow:0 2px 8px rgba(0,0,0,.6)`;
+    wrap.append(big, who); box.append(flash, wrap);
+    // Entrée 0,3 s avec léger rebond, tient ≈ 1 s, s'éteint.
+    flash.animate([{ opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: .6, offset: .7 }, { opacity: 0 }], { duration: 1800, fill: 'forwards' });
+    const a = wrap.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.08)', offset: .17 }, { transform: 'scale(1)', offset: .25 }, { opacity: 1, transform: 'scale(1)', offset: .78 }, { opacity: 0, transform: 'scale(1.03)' }], { duration: 1800, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'forwards' });
+    a.onfinish = () => box.replaceChildren();
+  }
+
+  // ---------- Vestiaire : prono du groupe en haut à gauche ----------
+  function renderProno() {
+    const box = layer('cowatch-prono', 'top:24px;left:24px'); if (!box) return;
+    if (theme !== 'vestiaire' || !inRoom || !pronos.length) { box.replaceChildren(); return; }
+    loadFonts();
+    const t = th(), tally = {}; for (const p of pronos) tally[p.score] = (tally[p.score] || 0) + 1;
+    const [score, n] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    box.style.cssText += `;background:${rgba(t.bg, .74)};border:1px solid ${rgba(t.muted, .22)};border-radius:12px;padding:10px 14px;color:${t.text};display:flex;flex-direction:column;gap:4px`;
+    const k = document.createElement('span'); k.textContent = 'Prono du groupe'; k.style.cssText = `font:700 11px ${t.display};letter-spacing:.2em;text-transform:uppercase;color:${t.muted}`;
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:baseline;gap:8px';
+    const sc = document.createElement('span'); sc.textContent = score; sc.style.cssText = `font:800 28px/1 ${t.display}`;
+    const sub = document.createElement('span'); sub.textContent = pronos.length === 1 ? `${pronos[0].name}` : n > 1 ? `${n} sur ${pronos.length}` : `${pronos.length} pronos`; sub.style.cssText = `font:12px ${t.body};color:${t.muted}`;
+    row.append(sc, sub); box.replaceChildren(k, row);
+  }
+
+  // ---------- Barre d'émojis du plein écran : en bas au centre, visible quand on bouge la souris ----------
+  let barTimer = null;
+  function renderBar(show) {
+    const box = layer('cowatch-bar', 'left:50%;bottom:110px;transform:translateX(-50%)'); if (!box) return;
+    if (!inRoom || !isFs()) { box.replaceChildren(); return; }
+    const t = th();
+    if (box.dataset.theme !== theme || !box.childElementCount) {
+      box.dataset.theme = theme; box.replaceChildren();
+      box.style.cssText += `;pointer-events:auto;display:flex;gap:6px;background:${rgba(t.bg, .74)};border:1px solid ${rgba(t.muted, .22)};border-radius:14px;padding:6px 10px;transition:opacity .3s`;
+      t.emojis.forEach((em, i) => {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = em; b.setAttribute('aria-label', `Réaction ${t.labels[i] || em}`);
+        b.style.cssText = 'width:44px;height:44px;border-radius:50%;border:0;background:transparent;font-size:24px;cursor:pointer;padding:0;line-height:1';
+        b.onclick = e => { e.stopPropagation(); chrome.runtime.sendMessage({ to: 'engine', cmd: 'reaction', emoji: em }).catch(() => {}); if (!calm()) b.animate([{ transform: 'scale(.85)' }, { transform: 'scale(1)' }], { duration: 160 }); };
+        box.append(b);
+      });
+    }
+    if (show) { box.style.opacity = '1'; box.style.pointerEvents = 'auto'; clearTimeout(barTimer); barTimer = setTimeout(() => { box.style.opacity = '0'; box.style.pointerEvents = 'none'; }, 3000); }
+  }
+  document.addEventListener('mousemove', () => { if (inRoom && isFs() && isDisplayFrame()) { renderBar(true); renderReopen(true); } }, { passive: true });
+
+  // ---------- Languette « Cowatch » sur le bord droit : rouvre le panneau, visible aussi en plein écran ----------
+  let inRoom = false, panelOpen = true, unread = 0, reopenEl = null, lastNudge = 0;
+  function renderReopen(nudge) {
+    const show = inRoom && isDisplayFrame() && (isFs() || !panelOpen);
     if (!show) { reopenEl?.remove(); return; }
+    const t = th();
     if (!reopenEl) {
       reopenEl = document.createElement('button'); reopenEl.id = 'cowatch-reopen'; reopenEl.type = 'button';
-      reopenEl.setAttribute('aria-label', 'Ouvrir Cowatch');
-      reopenEl.style.cssText = 'position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;display:flex;align-items:center;gap:7px;background:#ff5a3c;color:#fff;border:0;border-radius:12px 0 0 12px;padding:11px 12px 11px 14px;font:700 13px system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.4);cursor:pointer';
-      reopenEl.onclick = async () => {
+      reopenEl.onclick = async e => {
+        e.stopPropagation();
+        if (isFs()) await (document.exitFullscreen?.() || Promise.resolve()).catch(() => {}); // le panneau ne s'affiche pas en plein écran
         const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null);
         if (r && r.ok) { panelOpen = true; unread = 0; renderReopen(); }
       };
-      document.addEventListener('fullscreenchange', renderReopen);
     }
-    reopenEl.textContent = '💬 Cowatch';
-    if (unread) { const n = document.createElement('span'); n.textContent = unread > 9 ? '9+' : String(unread); n.style.cssText = 'background:#fff;color:#ff5a3c;border-radius:999px;padding:1px 7px;font-size:12px'; reopenEl.append(n); }
-    if (!reopenEl.isConnected) document.documentElement.append(reopenEl);
+    reopenEl.style.cssText = `position:fixed;right:0;top:calc(50% - 44px);width:40px;height:88px;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:${rgba(t.bg, .82)};color:${t.text};border:1px solid ${rgba(t.muted, .22)};border-right:0;border-radius:12px 0 0 12px;cursor:pointer;padding:0;box-shadow:0 6px 20px rgba(0,0,0,.35)`;
+    reopenEl.setAttribute('aria-label', unread ? `Rouvrir le chat Cowatch, ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}` : 'Rouvrir le chat Cowatch');
+    reopenEl.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg>';
+    const lab = document.createElement('span'); lab.className = 'sr'; lab.textContent = 'Cowatch'; lab.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)'; reopenEl.append(lab);
+    if (unread) { const n = document.createElement('span'); n.textContent = unread > 9 ? '9+' : String(unread); n.style.cssText = `background:${t.accent};color:${t.accentInk};border-radius:99px;padding:1px 6px;font:700 11px system-ui`; reopenEl.append(n); }
+    const par = layerParent(); if (reopenEl.parentNode !== par) par.append(reopenEl);
+    // Petit coup d'épaule quand un message arrive, jamais plus d'une fois toutes les 5 s.
+    if (nudge === 'msg' && !calm() && Date.now() - lastNudge > 5000) { lastNudge = Date.now(); reopenEl.animate([{ transform: 'none' }, { transform: 'translateX(-8px)' }, { transform: 'none' }], { duration: 400, easing: 'ease-in-out' }); }
   }
+
+  function setTheme(id) {
+    if (!id || id === theme || (TT && !TT.valid(id))) return;
+    theme = id; loadFonts();
+    for (const k of ['cowatch-bar']) { if (layers[k]) layers[k].dataset.theme = ''; }
+    rebuildFaces(); renderProno(); renderBar(false); renderReopen();
+  }
+  document.addEventListener('fullscreenchange', () => {
+    for (const id of Object.keys(layers)) if (!isDisplayFrame()) layers[id].remove(); else layer(id, '');
+    rebuildFaces(); renderProno(); renderBar(true); renderReopen();
+  });
+
+  // Position de ma vidéo envoyée au moteur chaque seconde : mes réactions portent ce repère (zéro spoil chez les autres).
+  setInterval(() => { if (inRoom && video && window.top === window || (inRoom && video && isDisplayFrame())) { const p = myPos(); if (p) chrome.runtime.sendMessage({ cmd: 'pos', ...p, playing: !video.paused }).catch(() => {}); } }, 1000);
+
+  if (window.top !== window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
   chrome.runtime.onMessage.addListener(m => {
-    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen) unread = 0; renderReopen(); return; }
-    if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); renderMuted(); return; }
+    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); return; }
+    if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); pronos = m.pronos || []; if (m.theme) setTheme(m.theme); renderMuted(); renderProno(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
-    if (m.t === 'welcome') { inRoom = true; renderReopen(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
+    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
-    else if (m.t === 'reaction') showReaction(m.name, m.emoji);
-    else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen) { unread++; renderReopen(); } }
+    else if (m.t === 'reaction') onReaction(m);
+    else if (m.t === 'goal') onGoal(m);
+    else if (m.t === 'goal-cancel') onGoalCancel(m);
+    else if (m.t === 'theme') setTheme(m.theme);
+    else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen || isFs()) { unread++; renderReopen('msg'); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);
-    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); banner('Cowatch déconnecté'); }
+    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); renderProno(); renderBar(false); banner('Cowatch déconnecté'); }
   });
 })();

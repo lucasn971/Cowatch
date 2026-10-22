@@ -1,18 +1,36 @@
 // Panneau Cowatch : interface seulement. Le moteur (voix, connexions, synchro) tourne à part
 // (document caché sur Chrome / Edge / Brave), ce qui permet de ranger le panneau sans couper la voix.
+// Mise en page commune à toutes les ambiances ; couleurs, polices, textes et émojis viennent de themes.js.
 const DEFAULT_SERVER = 'https://salon-coche-private.onrender.com';
-const EMOJIS = ['😂', '😱', '🔥', '💀', '👀', '😍', '⚽', '👏'];
+const T = self.CowatchThemes;
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
 let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
+let theme = T.DEFAULT, picked = T.DEFAULT, choiceFor = 'create', calibOpen = false, lastLog = null, tabTitle = '', titleAt = 0;
+
+// ---------- Ambiance : variables CSS, polices, textes, émojis ----------
+function applyTheme(id) {
+  if (!T.valid(id)) id = T.DEFAULT;
+  const t = T.get(id), root = document.documentElement;
+  for (const [k, v] of Object.entries(T.vars(id))) root.style.setProperty(k, v);
+  root.dataset.theme = id; document.body.dataset.theme = id;
+  // Vestiaire : polices fournies avec l'extension ; les autres ambiances : Google Fonts (graisses utiles seulement).
+  $('#gfont').href = id === 'vestiaire' || !t.gfont ? '' : `https://fonts.googleapis.com/css2?${t.gfont}&display=swap`;
+  if (theme !== id || !$('#react').childElementCount) {
+    const box = $('#react'); box.innerHTML = '';
+    t.emojis.forEach((em, i) => { const b = document.createElement('button'); b.textContent = em; b.setAttribute('aria-label', t.labels[i] || em); b.onclick = () => engine({ cmd: 'reaction', emoji: em }); box.append(b); });
+  }
+  theme = id;
+  $('#invite').textContent = t.invite; $('#chatIn').placeholder = t.placeholder;
+}
 
 // ---------- Lien avec le moteur ----------
 function ui(ev) {
-  if (ev.ev === 'snap') { st = ev.state; render(); if (ev.log) { $('#chat').innerHTML = ''; ev.log.forEach(addLog); } }
+  if (ev.ev === 'snap') { st = ev.state; render(); if (ev.log) { $('#chat').innerHTML = ''; lastLog = null; ev.log.forEach(addLog); } }
   if (ev.ev === 'log') addLog(ev.item);
-  if (ev.ev === 'speak') { document.querySelector(`.peer[data-id="${CSS.escape(ev.id)}"]`)?.classList.toggle('speaking', ev.on); }
+  if (ev.ev === 'speak') { const el = document.querySelector(`.peer[data-id="${CSS.escape(ev.id)}"]`); if (el) { el.classList.toggle('speaking', ev.on); renderTag(el); } }
 }
 function engine(cmd) {
   if (engineLocal) return self.__cowatchEngine.handle(cmd);
@@ -29,18 +47,19 @@ async function startEngine() {
 
 // ---------- Démarrage ----------
 (async () => {
-  const saved = await chrome.storage.local.get(['name', 'server', 'avatar']);
+  const saved = await chrome.storage.local.get(['name', 'server', 'avatar', 'theme']);
   if (saved.server) server = saved.server;
   if (params.get('server')) server = params.get('server');
   fetch(server.replace(/\/$/, '') + '/health').catch(() => {}); // réveille le serveur gratuit pendant qu'on tape son pseudo
+  picked = T.valid(saved.theme) ? saved.theme : T.DEFAULT; applyTheme(picked);
   $('#name').value = saved.name || ''; myAvatar = saved.avatar || null; renderMyAvatar();
   tabId = params.get('tab') ? Number(params.get('tab')) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
-  for (const em of EMOJIS) { const b = document.createElement('button'); b.textContent = em; b.onclick = () => engine({ cmd: 'reaction', emoji: em }); $('#react').append(b); }
+  buildCards();
   chrome.runtime.onMessage.addListener((m, sender) => {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
   });
-  // Signale à la page que le panneau est ouvert (sa languette « 💬 Cowatch » se cache) ; reconnexion si l'arrière-plan redémarre.
+  // Signale à la page que le panneau est ouvert (sa languette « Cowatch » se calme) ; reconnexion si l'arrière-plan redémarre.
   const watchPanel = () => { try { chrome.runtime.connect({ name: 'panel:' + tabId }).onDisconnect.addListener(() => setTimeout(watchPanel, 500)); } catch {} };
   if (tabId != null) watchPanel();
   await startEngine();
@@ -62,15 +81,15 @@ function showErr(msg, field) {
   localErr = msg; $('#err').textContent = msg;
   if (field) { $(field).classList.add('bad'); $(field).focus(); }
 }
-$('#name').addEventListener('input', () => { $('#name').classList.remove('bad'); if (localErr) showErr(''); });
+$('#name').addEventListener('input', () => { $('#name').classList.remove('bad'); if (localErr) showErr(''); if (!myAvatar) renderMyAvatar(); });
 $('#codeIn').addEventListener('input', () => { $('#codeIn').classList.remove('bad'); if (localErr) showErr(''); });
+// Créer : d'abord « Ce soir, quelle ambiance ? », puis « C'est parti » crée le salon.
 $('#create').onclick = () => {
   if (busy) return;
   if (!$('#name').value.trim()) return showErr('Choisis un pseudo.', '#name');
-  const code = randomCode();
-  join(code, 'create', copyInvite(code)); // le lien est copié tout de suite : il n'y a plus qu'à le coller à ses amis
+  openChoice('create');
 };
-$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c, 'join'); else showErr('Colle le lien d\'invitation reçu (ou le code du salon).', '#codeIn'); };
+$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c, 'join'); else showErr('Colle le lien d\'invitation reçu.', '#codeIn'); };
 $('#codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
 $('#name').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#codeIn').value.trim() ? $('#joinBtn') : $('#create')).click(); });
 function join(code, from, pre) {
@@ -84,7 +103,7 @@ function join(code, from, pre) {
   (async () => {
     await chrome.storage.local.set({ name });
     await startEngine();
-    await engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId });
+    await engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
   })();
   return true;
 }
@@ -101,57 +120,137 @@ function openMicPage() {
   else chrome.tabs.create({ url });
 }
 function renderBusy() {
-  const joining = st && st.joining && !st.inRoom;
   if (busy && st && !st.joining && !st.inRoom && st.err) busy = null; // échec : on rend la main
   if (st && st.inRoom) { busy = null; clearTimeout(busyTimer); }
-  for (const [id, label] of [['create', 'Créer un salon'], ['joinBtn', 'Rejoindre']]) {
-    const b = $('#' + id), mine = busy === (id === 'create' ? 'create' : 'join');
-    b.disabled = !!busy;
-    b.textContent = mine ? (st && st.wake ? 'Réveil du serveur… (≈ 30 s)' : 'Connexion…') : label;
-  }
-  if (!busy && joining) { $('#create').disabled = true; $('#create').textContent = st.wake ? 'Réveil du serveur… (≈ 30 s)' : 'Connexion…'; }
+  const wait = st && st.wake ? 'Réveil du serveur… (≈ 30 s)' : 'Connexion…';
+  $('#go').disabled = busy === 'create'; $('#go').textContent = busy === 'create' ? wait : (choiceFor === 'change' ? 'Changer d\'ambiance' : 'C\'est parti');
+  $('#create').disabled = !!busy; $('#joinBtn').disabled = !!busy;
+  $('#joinBtn').textContent = busy === 'join' ? wait : 'Rejoindre';
 }
 
+// ---------- Ce soir, quelle ambiance ? ----------
+function buildCards() {
+  const box = $('#cards'); box.innerHTML = '';
+  for (const id of T.ORDER) {
+    const t = T.THEMES[id], b = document.createElement('button');
+    b.className = 'card'; b.dataset.id = id; b.setAttribute('role', 'radio');
+    if (t.soon) b.setAttribute('aria-disabled', 'true');
+    const art = document.createElement('div'); art.className = 'art'; art.style.background = t.cardBg;
+    for (const [k, v] of Object.entries(T.vars(t.soon ? 'vestiaire' : id))) art.style.setProperty(k, v);
+    art.innerHTML = t.card; // contenu fixe de themes.js (pas de texte venant des utilisateurs)
+    const n = document.createElement('b'); n.textContent = t.soon ? `${t.name} · bientôt` : t.name;
+    const d = document.createElement('span'); d.className = 'd'; d.textContent = t.desc;
+    b.append(art, n, d);
+    b.onclick = () => { if (t.soon) return; picked = id; renderCards(); };
+    box.append(b);
+  }
+  renderCards();
+}
+function renderCards() {
+  document.querySelectorAll('.card').forEach(c => c.setAttribute('aria-checked', String(c.dataset.id === picked)));
+  $('#pickedName').textContent = T.get(picked).name;
+}
+function openChoice(forWhat) {
+  choiceFor = forWhat; picked = forWhat === 'change' ? theme : picked; renderCards();
+  $('#choiceKicker').textContent = forWhat === 'change' ? 'Pour tout le salon' : 'Avant de lancer le salon';
+  $('#home').classList.add('hidden'); $('#room').classList.add('hidden'); $('#choice').classList.remove('hidden');
+  renderBusy();
+}
+function closeChoice() { $('#choice').classList.add('hidden'); render(); if (!st || !st.inRoom) $('#home').classList.remove('hidden'); }
+$('#choiceBack').onclick = closeChoice;
+$('#go').onclick = () => {
+  chrome.storage.local.set({ theme: picked });
+  if (choiceFor === 'change') { engine({ cmd: 'theme', theme: picked }); closeChoice(); return; }
+  if (busy) return;
+  applyTheme(picked);
+  const code = randomCode();
+  join(code, 'create', copyInvite(code)); // le lien est copié tout de suite : il n'y a plus qu'à le coller à ses amis
+};
+
+// ---------- Menu « … » ----------
+$('#menuBtn').onclick = e => { e.stopPropagation(); const open = $('#menu').classList.toggle('hidden') === false; $('#menuBtn').setAttribute('aria-expanded', String(open)); };
+document.addEventListener('click', e => { if (!$('#menu').contains(e.target)) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } });
+$('#mTheme').onclick = () => openChoice('change');
+$('#mCalib').onclick = () => { calibOpen = !calibOpen; if (calibOpen) $('#manual').open = true; render(); };
+
 // ---------- Affichage ----------
-function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 38%)`; }
+function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 45% 40%)`; }
 function avatarEl(name, src) {
   if (src) { const i = document.createElement('img'); i.className = 'avatar'; i.src = src; i.alt = ''; return i; }
   const s = document.createElement('span'); s.className = 'avatar'; s.textContent = (name || '?').trim().charAt(0).toUpperCase(); s.style.background = colorOf(name); return s;
+}
+function renderTag(el) { const tag = el.querySelector('.tag'); if (tag) tag.textContent = el.classList.contains('speaking') ? 'parle' : el.dataset.self === '1' ? 'toi' : ''; }
+async function refreshTitle() {
+  if (Date.now() - titleAt < 5000) return; titleAt = Date.now();
+  try { const tab = await chrome.tabs.get(tabId); tabTitle = (tab.title || '').replace(/\s*[|–-]\s*(Netflix|Prime Video|TF1\+?|Canal\+|myCANAL|YouTube|Paramount\+|Disney\+|M6\+?|france\.tv).*$/i, '').trim(); } catch {}
+  $('#nowTitle').textContent = tabTitle || 'Le programme';
 }
 function render() {
   if (!st) return;
   $('#playerStatus').textContent = st.video ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!st.video);
   $('#err').textContent = localErr || st.err || '';
   renderBusy();
-  $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom);
+  const inChoice = !$('#choice').classList.contains('hidden');
+  if (st.inRoom && T.valid(st.theme) && st.theme !== theme) applyTheme(st.theme);
+  if (!inChoice) { $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom); }
+  else if (st.inRoom && choiceFor === 'create') { $('#choice').classList.add('hidden'); $('#room').classList.remove('hidden'); }
+  for (const id of ['#mTheme', '#mCalib', '#leave']) $(id).classList.toggle('hidden', !st.inRoom);
+  $('.menu-code').classList.toggle('hidden', !st.inRoom);
+  if (st.inRoom && !st.owner) $('#mTheme').classList.add('hidden'); // seul celui qui a créé le salon change l'ambiance
   if (!st.inRoom) return;
   $('#code').textContent = st.code;
-  $('#invite').textContent = Date.now() - copiedAt < 6000 ? 'Lien copié ✓' : "Copier l'invitation";
+  refreshTitle();
+  const t = T.get(theme);
+  $('#invite').textContent = Date.now() - copiedAt < 6000 ? 'Lien copié ✓' : t.invite;
+  // Le groupe
+  const others = st.peers.filter(p => !p.self);
+  $('#groupTitle').textContent = `${t.groupWord} · ${st.peers.length}`;
   const box = $('#peers'); box.innerHTML = '';
   for (const p of st.peers) {
-    const el = document.createElement('div'); el.className = 'peer' + (p.self || p.state === 'connected' ? ' on' : '') + (p.speaking ? ' speaking' : '');
-    el.dataset.id = p.id; el.dataset.state = p.self ? 'self' : p.state;
-    const n = document.createElement('span'); n.textContent = p.self ? p.name + ' (toi)' : p.name;
-    el.append(avatarEl(p.name, p.avatar), n); box.append(el);
+    const el = document.createElement('div'); el.className = 'peer' + (p.self || p.state === 'connected' ? ' on' : ' off') + (p.speaking ? ' speaking' : '');
+    el.dataset.id = p.id; el.dataset.state = p.self ? 'self' : p.state; el.dataset.self = p.self ? '1' : '';
+    const av = document.createElement('span'); av.className = 'av'; av.append(avatarEl(p.name, p.avatar));
+    if (p.muted) { const mb = document.createElement('span'); mb.className = 'mutedBadge'; mb.textContent = '🔇'; mb.title = 'Micro coupé'; av.append(mb); }
+    const n = document.createElement('span'); n.className = 'who'; n.textContent = p.name;
+    const tag = document.createElement('span'); tag.className = 'tag';
+    el.append(av, n, tag); renderTag(el); box.append(el);
   }
-  // Un seul bouton micro : « Activer mon micro » tant qu'il n'est pas autorisé, sinon couper / réactiver.
-  $('#mute').textContent = st.needMic ? '🎤 Activer mon micro' : st.muted ? 'Réactiver le micro' : 'Couper le micro';
-  $('#mute').classList.toggle('need', !!st.needMic);
+  if (st.peers.length < 8) { const s = document.createElement('button'); s.className = 'slot'; s.innerHTML = '<span class="plus" aria-hidden="true">+</span>'; s.append(document.createTextNode(others.length ? 'Inviter quelqu\'un d\'autre' : 'Place libre : inviter')); s.onclick = () => $('#invite').click(); box.append(s); }
+  // Calés ?
+  const live = st.mode === 'live', a = st.autosync, syncEl = $('#synced');
+  const ok = others.length > 0 && (!live || (a && !st.noAutoClock));
+  syncEl.classList.toggle('wait', !ok);
+  $('#syncedTxt').textContent = !others.length ? 'seul pour l\'instant' : live && st.noAutoClock ? 'calage manuel' : ok ? 'calés' : 'calage…';
+  // Micro : une seule icône. Activer (pas encore autorisé) / couper / réactiver.
+  const mute = $('#mute'), label = st.needMic ? 'Activer mon micro' : st.muted ? 'Réactiver le micro' : 'Couper le micro';
+  mute.setAttribute('aria-label', label); mute.title = label; $('#muteTxt').textContent = label;
+  mute.classList.toggle('need', !!st.needMic); mute.classList.toggle('muted', !!st.muted && !st.needMic);
   $('#micHelp').classList.toggle('hidden', !st.needMic || !st.micErr);
   $('#micHelp').textContent = st.micErr === 'NotFoundError' ? 'Aucun micro trouvé sur cet ordinateur. Branche un casque ou des écouteurs avec micro.'
-    : st.micErr === 'NotReadableError' ? 'Le micro est déjà utilisé par une autre application (Zoom, Teams, FaceTime…). Ferme-la puis clique sur « Activer mon micro ».'
-    : 'Micro bloqué. Clique sur « Activer mon micro » et réponds « Autoriser ». Sur Mac, vérifie aussi Réglages Système › Confidentialité › Micro › Chrome.';
+    : st.micErr === 'NotReadableError' ? 'Le micro est déjà utilisé par une autre application (Zoom, Teams, FaceTime…). Ferme-la puis clique sur le micro.'
+    : 'Micro bloqué. Clique sur le micro et réponds « Autoriser ». Sur Mac, vérifie aussi Réglages Système › Confidentialité › Micro › Chrome.';
   $('#net').textContent = st.joining ? 'Reconnexion…' : '';
-  // Direct : calage automatique ; le calage manuel (TOP) reste disponible pour ceux qui regardent sur la TV.
-  const live = st.mode === 'live';
-  $('#calib').classList.toggle('hidden', !live);
+  // Vestiaire : prono d'avant-match et bouton VAR
+  const vest = theme === 'vestiaire';
+  $('#prono').classList.toggle('hidden', !vest);
+  if (vest) {
+    const mine = (st.pronos || []).find(x => x.name === st.me?.name);
+    if (mine && document.activeElement !== $('#pH') && document.activeElement !== $('#pA')) { const [h, w] = mine.score.split('-'); $('#pH').value = h; $('#pA').value = w; }
+    $('#pGo').textContent = mine ? 'Modifier' : 'Valider';
+    const list = st.pronos || [];
+    const tally = {}; for (const x of list) tally[x.score] = (tally[x.score] || 0) + 1;
+    const top = Object.entries(tally).sort((x, y) => y[1] - x[1])[0];
+    $('#pronoList').textContent = !list.length ? 'Chacun donne son score avant le coup d\'envoi.'
+      : `Le groupe voit ${top[0]}${top[1] > 1 ? ` (${top[1]} sur ${list.length})` : ''} · ` + list.map(x => `${x.name} ${x.score}`).join(', ');
+  }
+  $('#goalBar').classList.toggle('hidden', !(vest && st.myGoal));
+  // Direct : calage automatique ; calage manuel (TOP) via le menu, ou tout de suite si le site ne permet pas le calage auto.
+  $('#calib').classList.toggle('hidden', !(live && (calibOpen || st.noAutoClock)));
   if (live) {
-    const a = st.autosync;
-    if (st.noAutoClock) $('#manual').open = true;
-    $('#autoState').style.color = st.noAutoClock ? 'var(--muted)' : 'var(--ok)';
     $('#autoState').textContent = st.noAutoClock ? 'Calage automatique indisponible sur ce site : utilisez le TOP.'
       : !a ? 'Calage automatique : en attente d\'un 2e lecteur…'
       : a.spread > 0.6 ? `Calé automatiquement ✓ (écart corrigé : ${a.spread.toFixed(1)} s)` : 'Calé automatiquement ✓';
+    if (st.noAutoClock) $('#manual').open = true;
     const c = st.calib;
     $('#top').classList.toggle('hidden', !!(!c || c.myTop || c.done));
     $('#cMsg').textContent = c ? c.msg || '' : '';
@@ -165,15 +264,17 @@ function render() {
     $('#align').classList.toggle('hidden', !!(!(c && c.items && c.items.length >= 2) || c.done));
   }
 }
+// Chat : prénom une fois par série de messages, heure au survol ; messages système en petites pastilles centrées.
 function addLog(m) {
   const d = document.createElement('div');
-  if (m.kind === 'sys') { d.className = 'sys'; d.textContent = m.text; }
+  if (m.kind === 'sys') { d.className = 'sys'; d.textContent = m.text; lastLog = null; }
   else {
-    d.className = 'msg';
-    const t = document.createElement('span'); t.className = 't'; t.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const b = document.createElement('b'); b.textContent = m.name === st?.me?.name ? 'Toi' : m.name;
+    const mine = m.name === st?.me?.name, same = lastLog && lastLog.name === m.name && m.at - lastLog.at < 3 * 60 * 1000;
+    d.className = 'msg' + (same ? '' : ' first') + (mine ? ' mine' : '');
+    d.title = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!same) { const b = document.createElement('b'); b.textContent = mine ? 'Toi' : m.name; d.append(b); }
     const x = document.createElement('span'); x.textContent = m.text; // jamais de HTML
-    d.append(t, b, x);
+    d.append(x); lastLog = { name: m.name, at: m.at };
   }
   $('#chat').append(d); $('#chat').scrollTop = $('#chat').scrollHeight;
 }
@@ -183,7 +284,6 @@ function renderMyAvatar() {
   const el = avatarEl($('#name').value || '?', myAvatar); el.id = 'myAvatar'; $('#myAvatar').replaceWith(el);
   $('#photoBtn').textContent = myAvatar ? 'Changer ma photo' : 'Ajouter ma photo'; $('#photoDel').classList.toggle('hidden', !myAvatar);
 }
-$('#name').addEventListener('input', () => { if (!myAvatar) renderMyAvatar(); });
 $('#photoBtn').onclick = () => $('#photoIn').click();
 $('#photoDel').onclick = async () => { myAvatar = null; await chrome.storage.local.remove('avatar'); renderMyAvatar(); engine({ cmd: 'avatar', avatar: null }); };
 $('#photoIn').onchange = async () => {
@@ -200,8 +300,14 @@ $('#photoIn').onchange = async () => {
 // ---------- Actions du salon ----------
 $('#mute').onclick = () => { if (st && st.needMic) { openMicPage(); engine({ cmd: 'micGranted' }); } else engine({ cmd: 'mute' }); };
 function sendChat() { const v = $('#chatIn').value.trim(); if (!v) return; engine({ cmd: 'chat', text: v }); $('#chatIn').value = ''; }
-$('#send').onclick = sendChat;
 $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+$('#pGo').onclick = () => {
+  const h = parseInt($('#pH').value, 10), a = parseInt($('#pA').value, 10);
+  if (!(h >= 0 && h <= 20 && a >= 0 && a <= 20)) { $('#pH').classList.add('bad'); return; }
+  $('#pH').classList.remove('bad'); engine({ cmd: 'prono', score: `${h}-${a}` });
+};
+for (const id of ['#pH', '#pA']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#pGo').click(); });
+$('#goalCancel').onclick = () => engine({ cmd: 'goalCancel' });
 $('#cStart').onclick = () => engine({ cmd: 'calibStart' });
 $('#top').onclick = () => engine({ cmd: 'top' });
 $('#align').onclick = () => engine({ cmd: 'align' });
@@ -227,12 +333,12 @@ $('#diag').onclick = async () => {
   await new Promise(r => setTimeout(r, 3500));
   let page = ''; try { const tab = await chrome.tabs.get(tabId); page = new URL(tab.url).hostname; } catch {}
   const report = { cowatch: chrome.runtime.getManifest().version, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
-    salon: st?.code || null, at: new Date().toISOString(), frames: diagParts };
+    salon: st?.code || null, ambiance: theme, at: new Date().toISOString(), frames: diagParts };
   const txt = 'DIAGNOSTIC COWATCH\n' + JSON.stringify(report, null, 1);
   box.value = txt; box.classList.remove('hidden');
   let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch { box.select(); try { copied = document.execCommand('copy'); } catch {} }
   btn.disabled = false; btn.textContent = copied ? 'Copié ✓ — colle-le à Claude' : 'Sélectionne le texte et copie-le';
   // Aucune réponse de la page : Cowatch n'y tourne pas (onglet ouvert avant l'installation ou la mise à jour).
-  if (!diagParts.length) { $('#err').textContent = 'Cowatch ne voit pas la vidéo : recharge la page du programme.'; }
+  if (!diagParts.length) { const t = 'Cowatch ne voit pas la vidéo : recharge la page du programme.'; $('#err').textContent = t; $('#net').textContent = t; }
   setTimeout(() => { btn.textContent = 'Diagnostic'; }, 6000);
 };

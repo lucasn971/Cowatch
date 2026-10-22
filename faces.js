@@ -30,7 +30,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const av = await A.p.evaluate(() => chrome.storage.local.get('avatar').then(x => x.avatar || ''));
   ok(av.startsWith('data:image/jpeg') && av.length < 24000, `photo réduite et enregistrée (${av.length} caractères)`);
   ok(await A.p.locator('img#myAvatar').count() === 1, 'aperçu de la photo sur l\'accueil');
-  await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)');
+  await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)');
   const code = await A.p.textContent('#code');
   await B.p.fill('#codeIn', `${BASE}/j/${code}?u=${encodeURIComponent('https://www.canalplus.com/live/')}`); await B.p.click('#joinBtn'); // lien d'invitation collé tel quel await B.p.waitForSelector('#room:not(.hidden)');
   await sleep(4000);

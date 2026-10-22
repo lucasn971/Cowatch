@@ -47,11 +47,11 @@ net.createServer(client => {
   const pA = await panel(cA, 'lucas', SLOW);
   await pA.fill('#name', 'Lucas');
   wakeAt = Date.now() + 8000; refuseUntil = Date.now() + 3000;
-  await pA.click('#create'); await sleep(250);
-  const busy = await pA.evaluate(() => ({ dis: document.querySelector('#create').disabled, txt: document.querySelector('#create').textContent }));
+  await pA.click('#create'); await pA.click('#go'); await sleep(250);
+  const busy = await pA.evaluate(() => ({ dis: document.querySelector('#go').disabled, txt: document.querySelector('#go').textContent }));
   ok(busy.dis || /connexion|réveil/i.test(busy.txt), `retour immédiat après le clic (« ${busy.txt} »)`);
-  await pA.click('#create', { force: true }).catch(() => {}); await sleep(1500);
-  await pA.click('#create', { force: true }).catch(() => {});
+  await pA.click('#go', { force: true }).catch(() => {}); await sleep(1500);
+  await pA.click('#go', { force: true }).catch(() => {});
   await pA.waitForSelector('#room:not(.hidden)', { timeout: 30000 });
   await sleep(3000);
   const code = await pA.textContent('#code');
@@ -63,7 +63,7 @@ net.createServer(client => {
   // --- 2. Kylian : clique « Créer », « Quitter », puis colle le lien de Lucas ---
   const pB = await panel(cB, 'kylian', SLOW);
   await pB.fill('#name', 'Kylian');
-  await pB.click('#create'); await pB.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
+  await pB.click('#create'); await pB.click('#go'); await pB.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
   await pB.click('#leave'); await pB.waitForSelector('#home:not(.hidden)'); await sleep(800);
   await pB.fill('#codeIn', `${BASE}/j/${code}?u=x`); await pB.click('#joinBtn');
   await pB.waitForFunction(c => document.querySelector('#code')?.textContent === c && !document.querySelector('#room').classList.contains('hidden'), code, { timeout: 15000 });

@@ -25,6 +25,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1500);
   ok((await pA.textContent('#playerStatus')).includes('détectée ✓'), 'panneau de Lucas détecte la vidéo de l\'onglet');
   await pA.fill('#name', 'Lucas'); await pA.click('#create');
+  ok(await pA.isVisible('#choice') && await pA.locator('.card').count() === 6, 'écran « Ce soir, quelle ambiance ? » avec les 6 ambiances');
+  await pA.click('#go');
   await pA.waitForSelector('#room:not(.hidden)');
   const code = await pA.textContent('#code');
   ok(/^[A-Z0-9]{5}$/.test(code), `salon créé depuis l'extension (${code})`);
@@ -57,13 +59,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await vB.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('Ça commence !')), 'chat : message affiché aussi sur la vidéo de Kylian (bas droite)');
   // Réactions : elles montent sur la vidéo (couleur de la personne, sans pseudo) et ne vont pas dans le chat
   const chatBefore = await pA.textContent('#chat');
-  await pB.click('#react button >> nth=0'); await sleep(500);
-  const r1 = await vA.evaluate(() => { const e = document.querySelector('#cowatch-react div'); return e ? { emoji: e.textContent, ring: e.style.boxShadow } : null; });
-  ok(r1 && r1.emoji === '😂' && /rgb|hsl/.test(r1.ring), `réaction de Kylian sur la vidéo de Lucas, entourée de sa couleur (${r1 && r1.emoji})`);
-  await pB.evaluate(() => { const b = document.querySelectorAll('#react button'); for (let i = 0; i < 40; i++) b[i % b.length].click(); }); // avalanche de réactions
+  await pB.click('#react button >> nth=1'); await sleep(500);
+  const r1 = await vA.evaluate(() => { const e = document.querySelector('#cowatch-react .cw-rx'); return e ? { emoji: e.querySelector('.cw-emoji').textContent, who: e.querySelector('.cw-who').textContent, ring: e.querySelector('.cw-emoji').style.boxShadow } : null; });
+  ok(r1 && r1.emoji === '🔥' && r1.who === 'Kylian' && /rgb|hsl/.test(r1.ring), `réaction de Kylian sur la vidéo de Lucas, avec son prénom et sa couleur (${r1 && r1.emoji} ${r1 && r1.who})`);
+  await sleep(1600);
+  await pB.evaluate(() => { const b = document.querySelectorAll('#react button'); for (let i = 0; i < 40; i++) b[1 + i % (b.length - 1)].click(); }); // avalanche (sans ⚽, qui déclenche le BUUUT)
   await sleep(700); await vA.screenshot({ path: '/tmp/claude-0/reactions.png' }); await sleep(800);
-  const onScreen = await vA.evaluate(() => document.querySelectorAll('#cowatch-react div').length);
-  ok(onScreen > 3 && onScreen <= 14, `avalanche : l'écran reste lisible (${onScreen} réactions visibles au maximum 14)`);
+  const av = await vA.evaluate(() => ({ n: document.querySelectorAll('#cowatch-react .cw-rx').length, labels: [...document.querySelectorAll('#cowatch-react .cw-who')].map(e => e.textContent) }));
+  ok(av.n >= 2 && av.n <= 14, `avalanche : l'écran reste lisible (${av.n} bulles, 14 au maximum)`);
+  ok(av.labels.some(l => /×\d/.test(l)), `même émoji tapé plusieurs fois : une seule bulle qui grossit (${av.labels.join(' · ')})`);
+  // Vestiaire : ⚽ = BUUUT, un seul par but
+  await sleep(3200); await pB.click('#react button >> nth=0');
+  let goal = false; for (let i = 0; i < 20 && !goal; i++) { await sleep(150); goal = await vA.evaluate(() => (document.querySelector('#cowatch-buuut')?.innerText || '').toUpperCase().includes('BUUUT')); }
+  ok(goal, 'Vestiaire : ⚽ de Kylian → « BUUUT » sur la vidéo de Lucas');
+  ok(await vA.evaluate(() => (document.querySelector('#cowatch-buuut')?.innerText || '').includes('Kylian l\'a crié en premier')), 'le BUUUT dit qui l\'a crié en premier');
+  ok(await pB.isVisible('#goalBar'), 'celui qui a crié peut annuler (VAR)');
+  await sleep(2200); await pA.click('#react button >> nth=0'); await sleep(900);
+  ok(!(await vA.evaluate(() => (document.querySelector('#cowatch-buuut')?.innerText || '').includes('BUUUT'))), 'un seul BUUUT par but : le 2e ⚽ est une simple réaction');
   ok(await pA.textContent('#chat') === chatBefore, 'les réactions ne remplissent pas le chat');
   ok(!(await vA.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('😂'))), 'ni les messages sur la vidéo');
 
@@ -78,7 +90,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // --- Mode match : calibration et alignement ---
   await vA.evaluate(() => document.querySelector('video').play()); await sleep(1500);
   await vA.evaluate(() => { document.querySelector('video').dataset.cowatchLive = '1'; }); await sleep(2000); // direct détecté tout seul
-  ok(await pB.isVisible('#calib'), 'mode match visible chez Kylian');
+  ok((await pB.textContent('#syncedTxt')).length > 0, `direct détecté chez Kylian (« ${await pB.textContent('#syncedTxt')} »)`);
+  for (const p of [pA, pB]) { await p.click('#menuBtn'); await p.click('#mCalib'); }
+  ok(await pB.isVisible('#calib'), 'calage manuel (TV) accessible depuis le menu « … »');
   await pA.evaluate(() => { document.querySelector('#manual').open = true; }); await pB.evaluate(() => { document.querySelector('#manual').open = true; });
   await pA.click('#cStart'); await sleep(400);
   await pA.click('#top'); await sleep(2500); await pB.click('#top'); await sleep(500);

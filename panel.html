@@ -4,118 +4,96 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cowatch</title>
-<style>
-:root{--bg:#0f0e13;--panel:#17151d;--line:#2a2731;--text:#f2eff6;--muted:#9b95a8;--accent:#ff5a3c;--ok:#3ccf98;--speak:#ffd23c}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
-header{padding:14px 14px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
-.logo{font-weight:800;font-size:17px;letter-spacing:-.02em}
-.logo span{color:var(--accent)}
-.muted{color:var(--muted)}
-.small{font-size:12px}
-button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:9px 12px;background:var(--accent);color:#fff;font-weight:600}
-button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
-button:disabled{opacity:.5;cursor:default}
-button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:#121117;color:var(--text);font:inherit}
-label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-section{padding:14px}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.hidden{display:none!important}
-#home{display:flex;flex-direction:column;gap:6px}
-#room{flex:1;min-height:0;display:flex;flex-direction:column}
-.bar{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
-.code{font:700 15px ui-monospace,monospace;letter-spacing:2px}
-.peers{display:flex;flex-wrap:wrap;gap:6px}
-.peer{border:1.5px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;display:flex;align-items:center;gap:6px}
-.peer .d{width:7px;height:7px;border-radius:50%;background:var(--muted)}
-.peer.on .d{background:var(--ok)}
-.peer.speaking{border-color:var(--speak)}
-.react{display:flex;gap:4px;flex-wrap:wrap}
-.react button{background:#121117;border:1px solid var(--line);font-size:17px;padding:4px 8px;border-radius:8px}
-.tabs{display:flex;gap:6px}
-.tabs button{flex:1;padding:6px;font-size:12px}
-.tabs button.on{border-color:var(--accent)}
-#calib{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
-#top{font-size:20px;padding:12px}
-.res{display:flex;justify-content:space-between;font-size:12px}
-#chat{flex:1;min-height:80px;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
-.msg{font-size:13px;word-wrap:break-word}
-.msg b{margin-right:4px}
-.msg .t{color:var(--muted);font-size:10.5px;margin-right:4px}
-.sys{color:var(--muted);font-size:12px;font-style:italic}
-.compose{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:6px}
-.status{font-size:12px;color:var(--muted)}
-.status.ok{color:var(--ok)}
-.avatar{width:22px;height:22px;border-radius:50%;object-fit:cover;flex:none;background:#2a2731;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
-.peer .avatar{width:18px;height:18px;font-size:9px}
-.peer.speaking .avatar{box-shadow:0 0 0 2px var(--speak)}
-.me-photo{display:flex;align-items:center;gap:10px;margin-top:10px}
-.me-photo .avatar{width:44px;height:44px;font-size:17px}
-.livetag{font-size:12px;color:var(--muted)}
-.livetag b{color:var(--accent)}
-.big{padding:12px;font-size:15px}
-input.bad{border-color:var(--accent)}
-#mute.need{background:var(--accent);border-color:var(--accent);color:#fff}
-#diag{background:none;border:0;color:var(--muted);font-weight:400;font-size:11px;padding:0;text-decoration:underline}
-kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:1px 4px}
-</style>
+<link rel="stylesheet" href="panel.css">
+<link id="gfont" rel="stylesheet" href="">
 </head>
 <body>
+<!-- Structure unique pour toutes les ambiances (passation Design du 22/10) : seuls les tokens --cw-* changent. -->
 <header>
-  <div class="logo">Cowatch<span>.</span></div>
-  <div class="status" id="playerStatus">Aucune vidéo détectée</div>
+  <span class="logo">Cowatch</span>
+  <span class="status small" id="playerStatus">Aucune vidéo détectée</span>
+  <button class="icon" id="menuBtn" aria-label="Plus d'options" aria-haspopup="true" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
 </header>
-<textarea id="diagOut" class="hidden" readonly style="margin:8px 14px 0;height:110px;background:#121117;color:var(--muted);border:1px solid var(--line);border-radius:8px;font:11px ui-monospace,monospace"></textarea>
+<div id="menu" class="menu hidden" role="menu">
+  <div class="menu-code small">Code du salon <b id="code"></b></div>
+  <button role="menuitem" id="mTheme">Changer d'ambiance</button>
+  <button role="menuitem" id="mCalib">Calage manuel (TV)</button>
+  <button role="menuitem" id="photoBtn">Ajouter ma photo</button>
+  <button role="menuitem" id="photoDel" class="hidden">Retirer ma photo</button>
+  <button role="menuitem" id="diag">Diagnostic</button>
+  <button role="menuitem" id="leave">Quitter le salon</button>
+</div>
+<input type="file" id="photoIn" accept="image/*" class="hidden">
+<textarea id="diagOut" class="hidden" readonly></textarea>
 
+<!-- Accueil -->
 <section id="home">
   <label for="name">Ton pseudo</label>
-  <input id="name" maxlength="24" placeholder="ex. Lucas">
-  <div class="me-photo">
-    <span class="avatar" id="myAvatar"></span>
-    <button class="ghost small" id="photoBtn">Ajouter ma photo</button>
-    <button class="ghost small hidden" id="photoDel" aria-label="Retirer ma photo">Retirer</button>
-    <input type="file" id="photoIn" accept="image/*" class="hidden">
-  </div>
-  <button id="create" class="big" style="margin-top:10px">Créer un salon</button>
+  <div class="me-photo"><span class="avatar" id="myAvatar"></span><input id="name" maxlength="24" placeholder="ex. Lucas"></div>
+  <button id="create" class="primary">Créer un salon</button>
   <label for="codeIn">Ou colle le lien d'invitation reçu</label>
-  <div class="row"><input id="codeIn" maxlength="400" placeholder="Lien ou code (ex. K7PQ2)" style="flex:1"><button class="ghost" id="joinBtn">Rejoindre</button></div>
-  <div id="err" class="small" style="color:var(--accent);min-height:18px"></div>
+  <div class="row"><input id="codeIn" maxlength="400" placeholder="Lien d'invitation"><button class="ghost" id="joinBtn">Rejoindre</button></div>
+  <div id="err" class="small err" role="alert"></div>
 </section>
 
+<!-- Ce soir, quelle ambiance ? -->
+<section id="choice" class="hidden">
+  <div class="small muted" id="choiceKicker">Avant de lancer le salon</div>
+  <h1>Ce soir, quelle ambiance&nbsp;?</h1>
+  <div class="small muted">Tu pourras en changer à tout moment.</div>
+  <div id="cards" class="cards" role="radiogroup" aria-label="Ambiances"></div>
+  <div class="choice-foot"><span class="small">Choix&nbsp;: <b id="pickedName"></b></span><button id="go" class="primary">C'est parti</button></div>
+  <button id="choiceBack" class="link small">Retour</button>
+</section>
+
+<!-- Salon -->
 <div id="room" class="hidden">
-  <div class="bar">
-    <div class="row" style="justify-content:space-between">
-      <div><span class="muted small">Salon </span><span class="code" id="code"></span></div>
-      <button class="ghost small" id="invite">Copier l'invitation</button>
-    </div>
-    <div class="peers" id="peers"></div>
-    <div class="row">
-      <button id="mute" class="ghost small">Couper le micro</button>
-      <span id="net" class="small muted"></span>
-    </div>
-    <div id="micHelp" class="small hidden" style="color:var(--speak)"></div>
-    <div class="react" id="react"></div>
-    <div id="calib" class="hidden">
-      <div class="small" id="autoState" style="color:var(--ok)"></div>
-      <details id="manual">
-        <summary class="small muted">Calage manuel (si quelqu'un regarde sur la TV)</summary>
-        <div class="small muted" style="margin:6px 0">Tout le monde appuie sur TOP au moment où il <b>voit</b> le même instant (coup de sifflet, score qui change).</div>
-        <div class="row"><button class="ghost small" id="cStart">Lancer un TOP</button><button class="small hidden" id="align">Aligner</button></div>
-        <button id="top" class="hidden" style="margin-top:8px">TOP !</button>
-        <div id="cRes"></div>
-        <div id="cMsg" class="small muted"></div>
-      </details>
-    </div>
+  <div class="now">
+    <span id="nowTitle" class="now-title"></span>
+    <span id="synced" class="synced small"><span class="dot"></span><span id="syncedTxt">calés</span></span>
   </div>
+  <div class="group">
+    <div class="kicker" id="groupTitle">Le groupe</div>
+    <div id="peers"></div>
+  </div>
+  <button id="invite" class="primary">Convoquer un pote</button>
+  <div id="micHelp" class="small warn hidden"></div>
+
+  <!-- Bloc propre à l'ambiance : Vestiaire = prono d'avant-match -->
+  <div id="prono" class="block hidden">
+    <div class="kicker">Ton prono</div>
+    <div class="row prono-row">
+      <input id="pH" type="number" min="0" max="20" inputmode="numeric" aria-label="Buts de l'équipe à domicile">
+      <span class="dash">-</span>
+      <input id="pA" type="number" min="0" max="20" inputmode="numeric" aria-label="Buts de l'équipe à l'extérieur">
+      <button id="pGo" class="ghost">Valider</button>
+    </div>
+    <div id="pronoList" class="small muted"></div>
+  </div>
+  <div id="goalBar" class="block goal hidden"><span>Tu as crié <b>BUUUT</b></span><button id="goalCancel" class="ghost small">Annuler (VAR)</button></div>
+
+  <div id="calib" class="block hidden">
+    <div class="small" id="autoState"></div>
+    <details id="manual">
+      <summary class="small muted">Calage manuel (si quelqu'un regarde sur la TV)</summary>
+      <div class="small muted">Tout le monde appuie sur TOP au moment où il <b>voit</b> le même instant.</div>
+      <div class="row"><button class="ghost small" id="cStart">Lancer un TOP</button><button class="small hidden" id="align">Aligner</button></div>
+      <button id="top" class="primary hidden">TOP !</button>
+      <div id="cRes"></div>
+      <div id="cMsg" class="small muted"></div>
+    </details>
+  </div>
+
   <div id="chat" aria-live="polite"></div>
+  <div class="react" id="react"></div>
   <div class="compose">
-    <input id="chatIn" maxlength="500" placeholder="Écrire un message…">
-    <button id="send">Envoyer</button>
+    <label class="sr" for="chatIn">Message</label>
+    <input id="chatIn" maxlength="500" placeholder="Crie un truc…">
+    <button id="mute" class="icon mic" aria-label="Couper mon micro"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span class="sr" id="muteTxt">Couper le micro</span></button>
   </div>
-  <div class="row" style="padding:0 14px 12px;justify-content:space-between"><button class="ghost small" id="leave">Quitter le salon</button><button id="diag">Diagnostic</button></div>
+  <div id="net" class="small muted net"></div>
 </div>
+<script src="themes.js"></script>
 <script src="panel.js"></script>
 </body>
 </html>

@@ -34,7 +34,7 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   }
   const A = await open(cA, 'lucas', 'Lucas'), B = await open(cB, 'kilian', 'Kilian', true);
   ok(await A.p.locator('#full').count() === 0, 'plus de bouton « Plein écran » Cowatch dans le panneau (on utilise celui du site)');
-  await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)');
+  await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)');
   const code = await A.p.textContent('#code');
   await B.p.fill('#codeIn', code); await B.p.click('#joinBtn'); await B.p.waitForSelector('#room:not(.hidden)');
   await sleep(3000);

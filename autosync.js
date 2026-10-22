@@ -28,7 +28,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const paused = x => x.v.evaluate(() => document.querySelector('video').paused);
   // Lucas a 5 s d'avance sur Kilian (au-delà de 3 s : pause)
   const A = await person('/tmp/claude-0/sa', 'lucas', 'Lucas', 5);
-  await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)');
+  await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)');
   const code = await A.p.textContent('#code');
   const B = await person('/tmp/claude-0/sb', 'kilian', 'Kilian', 0);
   await B.p.fill('#codeIn', code); await B.p.click('#joinBtn'); await B.p.waitForSelector('#room:not(.hidden)');

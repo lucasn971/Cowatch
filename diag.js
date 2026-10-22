@@ -18,7 +18,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.goto(`chrome-extension://${id}/panel.html?tab=${tab}&server=${encodeURIComponent(BASE)}`);
   await sleep(2000);
   ok((await p.textContent('#playerStatus')).includes('détectée ✓'), 'vidéo trouvée même cachée dans un shadow DOM');
-  await p.fill('#name', 'Lucas'); await p.click('#create'); await p.waitForSelector('#room:not(.hidden)');
+  await p.fill('#name', 'Lucas'); await p.click('#create'); await p.click('#go'); await p.waitForSelector('#room:not(.hidden)');
   await p.click('#diag'); await sleep(4500);
   const txt = await p.inputValue('#diagOut');
   ok(txt.startsWith('DIAGNOSTIC COWATCH'), 'le diagnostic produit un rapport');

@@ -54,7 +54,7 @@ const { live } = require('../testlive/livesrv.js');
   ok(gap0 > 6000, `avant calage : Lucas a ${(gap0 / 1000).toFixed(1)} s d'avance sur Kilian`);
 
   // Salon : Lucas crée, Kilian rejoint ; le calage doit se faire tout seul.
-  await A.p.fill('#name', 'Lucas'); await A.p.click('#create'); await A.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
+  await A.p.fill('#name', 'Lucas'); await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
   const code = await A.p.textContent('#code');
   await B.p.fill('#name', 'Kilian'); await B.p.fill('#codeIn', code); await B.p.click('#joinBtn');
   await B.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
