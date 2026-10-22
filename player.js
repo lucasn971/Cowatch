@@ -286,6 +286,7 @@
     let g = groups.get(emoji);
     if (g && now - g.last < 1500 && g.el.isConnected) { // même émoji en même temps : une seule bulle qui grossit
       g.count++; g.last = now; if (!g.names.includes(name)) g.names.push(name);
+      if (g.count > 3) { rain(emoji); g.lab.textContent = g.names.length > 1 ? `${g.names[0]} +${g.names.length - 1} ×${g.count}` : `${name} ×${g.count}`; return; } // au-delà de 3 : pluie
     } else {
       if (box.childElementCount >= 14) box.firstElementChild.remove(); // avalanche : les plus anciennes laissent la place
       const el = document.createElement('div'); el.className = 'cw-rx';
@@ -314,6 +315,25 @@
       ], { duration: 3000, easing: 'ease-out' });
     const anim = g.anim, el = g.el;
     anim.onfinish = () => { el.remove(); if (groups.get(emoji)?.el === el) groups.delete(emoji); };
+  }
+  // Pluie : quelques petits émojis tombent du haut de l'image, dispersés, puis s'effacent (40 au maximum à l'écran).
+  function rain(emoji) {
+    const box = layer('cowatch-rain', 'inset:0;overflow:hidden'); if (!box) return;
+    const n = 6 + Math.floor(Math.random() * 4);
+    // La pluie tombe dans l'image (pas au-dessus) : on prend le cadre de la vidéo quand on le connaît.
+    const r = video && video.isConnected ? video.getBoundingClientRect() : null, top = r && r.height > 100 ? Math.max(0, r.top) : 0, left = r && r.width > 100 ? Math.max(0, r.left) : 0, width = r && r.width > 100 ? Math.min(innerWidth, r.width) : innerWidth;
+    for (let i = 0; i < n; i++) {
+      if (box.childElementCount >= 60) box.firstElementChild.remove();
+      const d = document.createElement('span'); d.className = 'cw-drop'; d.textContent = emoji;
+      const size = 22 + Math.random() * 14, x = left + width * (.06 + Math.random() * .88);
+      d.style.cssText = `position:absolute;left:${x}px;top:${top - 30}px;font-size:${size}px;line-height:1;will-change:transform,opacity;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))`;
+      box.append(d);
+      const fall = (r && r.height > 100 ? r.height : innerHeight) * (.6 + Math.random() * .35), sway = (Math.random() - .5) * 80, delay = Math.random() * 600;
+      const a = calm()
+        ? d.animate([{ opacity: 0 }, { opacity: 1, offset: .2 }, { opacity: 0 }], { duration: 1600, delay })
+        : d.animate([{ transform: 'translate(0,0) rotate(0deg)', opacity: 0 }, { opacity: 1, offset: .12 }, { transform: `translate(${sway}px,${fall}px) rotate(${(Math.random() - .5) * 60}deg)`, opacity: 0 }], { duration: 2200 + Math.random() * 1200, delay, easing: 'cubic-bezier(.3,.6,.6,1)' });
+      a.onfinish = () => d.remove();
+    }
   }
   function onReaction(m) {
     const ms = waitFor(m);
@@ -357,25 +377,45 @@
   }
 
   // ---------- Vestiaire : prono du groupe en haut à gauche ----------
+  // Volet sur le bord gauche, à mi-hauteur (loin du score et du chrono, en haut de l'image) :
+  // replié, il montre le score le plus choisi ; au survol, il déroule le prono de chacun.
+  let pronoOpen = false;
   function renderProno() {
-    const box = layer('cowatch-prono', 'top:24px;left:24px'); if (!box) return;
-    if (theme !== 'vestiaire' || !inRoom || !pronos.length) { box.replaceChildren(); return; }
+    const box = layer('cowatch-prono', 'left:0;top:34%'); if (!box) return;
+    if (theme !== 'vestiaire' || !inRoom || !pronos.length) { box.replaceChildren(); box.style.display = 'none'; return; }
     loadFonts();
     const t = th(), tally = {}; for (const p of pronos) tally[p.score] = (tally[p.score] || 0) + 1;
     const [score, n] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-    box.style.cssText += `;background:${rgba(t.bg, .74)};border:1px solid ${rgba(t.muted, .22)};border-radius:12px;padding:10px 14px;color:${t.text};display:flex;flex-direction:column;gap:4px`;
-    const k = document.createElement('span'); k.textContent = 'Prono du groupe'; k.style.cssText = `font:700 11px ${t.display};letter-spacing:.2em;text-transform:uppercase;color:${t.muted}`;
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:baseline;gap:8px';
-    const sc = document.createElement('span'); sc.textContent = score; sc.style.cssText = `font:800 28px/1 ${t.display}`;
-    const sub = document.createElement('span'); sub.textContent = pronos.length === 1 ? `${pronos[0].name}` : n > 1 ? `${n} sur ${pronos.length}` : `${pronos.length} pronos`; sub.style.cssText = `font:12px ${t.body};color:${t.muted}`;
-    row.append(sc, sub); box.replaceChildren(k, row);
+    box.style.display = 'flex';
+    if (!box.dataset.wired) {
+      box.dataset.wired = '1';
+      box.addEventListener('mouseenter', () => { pronoOpen = true; renderProno(); });
+      box.addEventListener('mouseleave', () => { pronoOpen = false; renderProno(); });
+    }
+    box.style.pointerEvents = 'auto'; box.style.cursor = 'default';
+    box.style.flexDirection = 'column'; box.style.gap = '4px';
+    box.style.background = rgba(t.bg, .8); box.style.color = t.text; box.style.border = `1px solid ${rgba(t.muted, .22)}`; box.style.borderLeft = '0';
+    box.style.borderRadius = '0 12px 12px 0'; box.style.padding = pronoOpen ? '10px 14px' : '8px 10px 8px 9px'; box.style.boxShadow = '0 6px 20px rgba(0,0,0,.35)';
+    const k = document.createElement('span'); k.textContent = pronoOpen ? 'Prono du groupe' : 'Prono'; k.style.cssText = `font:700 10px ${t.display};letter-spacing:.18em;text-transform:uppercase;color:${t.muted}`;
+    const sc = document.createElement('span'); sc.textContent = score; sc.style.cssText = `font:800 ${pronoOpen ? 24 : 20}px/1 ${t.display}`;
+    const parts = [k, sc];
+    if (pronoOpen) {
+      const sub = document.createElement('span'); sub.textContent = n > 1 ? `${n} sur ${pronos.length}` : `${pronos.length} prono${pronos.length > 1 ? 's' : ''}`; sub.style.cssText = `font:12px ${t.body};color:${t.muted}`;
+      parts.push(sub);
+      for (const p of pronos) {
+        const row = document.createElement('div'); row.style.cssText = `display:flex;justify-content:space-between;gap:14px;font:600 13px ${t.body}`;
+        const nm = document.createElement('span'); nm.textContent = p.name; const v = document.createElement('b'); v.textContent = p.score; v.style.fontFamily = t.display;
+        row.append(nm, v); parts.push(row);
+      }
+    } else if (pronos.length > 1) { const sub = document.createElement('span'); sub.textContent = `×${pronos.length}`; sub.style.cssText = `font:11px ${t.body};color:${t.muted}`; parts.push(sub); }
+    box.replaceChildren(...parts);
   }
 
   // ---------- Barre d'émojis du plein écran : en bas au centre, visible quand on bouge la souris ----------
   let barTimer = null;
   function renderBar(show) {
     const box = layer('cowatch-bar', 'left:50%;bottom:110px;transform:translateX(-50%)'); if (!box) return;
-    if (!inRoom || !isFs()) { box.replaceChildren(); return; }
+    if (!inRoom || !(isFs() || !panelOpen)) { box.replaceChildren(); return; } // plein écran du site, ou panneau replié
     const t = th();
     if (box.dataset.theme !== theme || !box.childElementCount) {
       box.dataset.theme = theme; box.replaceChildren();
@@ -389,7 +429,7 @@
     }
     if (show) { box.style.opacity = '1'; box.style.pointerEvents = 'auto'; clearTimeout(barTimer); barTimer = setTimeout(() => { box.style.opacity = '0'; box.style.pointerEvents = 'none'; }, 3000); }
   }
-  document.addEventListener('mousemove', () => { if (inRoom && isFs() && isDisplayFrame()) { renderBar(true); renderReopen(true); } }, { passive: true });
+  document.addEventListener('mousemove', () => { if (inRoom && (isFs() || !panelOpen) && isDisplayFrame()) renderBar(true); }, { passive: true });
 
   // ---------- Languette « Cowatch » sur le bord droit : rouvre le panneau, visible aussi en plein écran ----------
   let inRoom = false, panelOpen = true, unread = 0, reopenEl = null, lastNudge = 0;
@@ -432,7 +472,7 @@
 
   if (window.top !== window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
   chrome.runtime.onMessage.addListener(m => {
-    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); return; }
+    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); renderBar(!panelOpen); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); pronos = m.pronos || []; if (m.theme) setTheme(m.theme); renderMuted(); renderProno(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }

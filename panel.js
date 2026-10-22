@@ -8,6 +8,7 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
 let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
+let pronoEditing = false;
 let theme = T.DEFAULT, picked = T.DEFAULT, choiceFor = 'create', calibOpen = false, lastLog = null, tabTitle = '', titleAt = 0;
 
 // ---------- Ambiance : variables CSS, polices, textes, émojis ----------
@@ -137,7 +138,10 @@ function buildCards() {
     if (t.soon) b.setAttribute('aria-disabled', 'true');
     const art = document.createElement('div'); art.className = 'art'; art.style.background = t.cardBg;
     for (const [k, v] of Object.entries(T.vars(t.soon ? 'vestiaire' : id))) art.style.setProperty(k, v);
-    art.innerHTML = t.card; // contenu fixe de themes.js (pas de texte venant des utilisateurs)
+    // Aperçu compact : les couleurs et trois émojis de l'ambiance (pas de texte qui déborde).
+    const em = document.createElement('span'); em.className = 'cw-emo'; em.textContent = t.soon ? '' : t.emojis.slice(0, 3).join(' ');
+    const bar = document.createElement('i'); bar.className = 'cw-acc'; bar.style.background = t.soon ? '#2A2A30' : t.accent;
+    art.append(em, bar);
     const n = document.createElement('b'); n.textContent = t.soon ? `${t.name} · bientôt` : t.name;
     const d = document.createElement('span'); d.className = 'd'; d.textContent = t.desc;
     b.append(art, n, d);
@@ -152,7 +156,6 @@ function renderCards() {
 }
 function openChoice(forWhat) {
   choiceFor = forWhat; picked = forWhat === 'change' ? theme : picked; renderCards();
-  $('#choiceKicker').textContent = forWhat === 'change' ? 'Pour tout le salon' : 'Avant de lancer le salon';
   $('#home').classList.add('hidden'); $('#room').classList.add('hidden'); $('#choice').classList.remove('hidden');
   renderBusy();
 }
@@ -170,6 +173,12 @@ $('#go').onclick = () => {
 // ---------- Menu « … » ----------
 $('#menuBtn').onclick = e => { e.stopPropagation(); const open = $('#menu').classList.toggle('hidden') === false; $('#menuBtn').setAttribute('aria-expanded', String(open)); };
 document.addEventListener('click', e => { if (!$('#menu').contains(e.target)) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } });
+// Replier : le panneau se range, la vidéo prend toute la largeur (écran « plein écran » des maquettes) ; la languette le rouvre.
+$('#foldBtn').onclick = async () => {
+  if (engineLocal) return; // Firefox / Opera : le moteur vit dans le panneau, le fermer couperait la voix
+  try { await chrome.sidePanel?.close?.({ tabId }); } catch {}
+  window.close();
+};
 $('#menu').addEventListener('click', e => { if (e.target.closest('button')) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } }); // un choix referme le menu
 $('#mTheme').onclick = () => openChoice('change');
 $('#mCalib').onclick = () => { calibOpen = !calibOpen; if (calibOpen) $('#manual').open = true; render(); };
@@ -196,6 +205,7 @@ function render() {
   if (!inChoice) { $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom); }
   else if (st.inRoom && choiceFor === 'create') { $('#choice').classList.add('hidden'); $('#room').classList.remove('hidden'); }
   for (const id of ['#mTheme', '#mCalib', '#leave']) $(id).classList.toggle('hidden', !st.inRoom);
+  $('#foldBtn').classList.toggle('hidden', !st.inRoom || engineLocal);
   $('.menu-code').classList.toggle('hidden', !st.inRoom);
   if (st.inRoom && !st.owner) $('#mTheme').classList.add('hidden'); // seul celui qui a créé le salon change l'ambiance
   if (!st.inRoom) return;
@@ -216,7 +226,7 @@ function render() {
     const tag = document.createElement('span'); tag.className = 'tag';
     el.append(av, n, tag); renderTag(el); box.append(el);
   }
-  if (st.peers.length < 8) { const s = document.createElement('button'); s.className = 'slot'; s.innerHTML = '<span class="plus" aria-hidden="true">+</span>'; s.append(document.createTextNode(others.length ? 'Inviter quelqu\'un d\'autre' : 'Place libre : inviter')); s.onclick = () => $('#invite').click(); box.append(s); }
+
   // Calés ?
   const live = st.mode === 'live', a = st.autosync, syncEl = $('#synced');
   const ok = others.length > 0 && (!live || (a && !st.noAutoClock));
@@ -235,14 +245,16 @@ function render() {
   const vest = theme === 'vestiaire';
   $('#prono').classList.toggle('hidden', !vest);
   if (vest) {
+    // Une fois le prono donné, le bloc se replie en une ligne ; les pronos de tout le monde sont sur la vidéo (volet à gauche).
     const mine = (st.pronos || []).find(x => x.name === st.me?.name);
+    const editing = !mine || pronoEditing;
     if (mine && document.activeElement !== $('#pH') && document.activeElement !== $('#pA')) { const [h, w] = mine.score.split('-'); $('#pH').value = h; $('#pA').value = w; }
-    $('#pGo').textContent = mine ? 'Modifier' : 'Valider';
-    const list = st.pronos || [];
-    const tally = {}; for (const x of list) tally[x.score] = (tally[x.score] || 0) + 1;
-    const top = Object.entries(tally).sort((x, y) => y[1] - x[1])[0];
-    $('#pronoList').textContent = !list.length ? 'Chacun donne son score avant le coup d\'envoi.'
-      : `Le groupe voit ${top[0]}${top[1] > 1 ? ` (${top[1]} sur ${list.length})` : ''} · ` + list.map(x => `${x.name} ${x.score}`).join(', ');
+    $('#pronoEdit').classList.toggle('hidden', !editing); $('#pronoDone').classList.toggle('hidden', editing);
+    if (mine) $('#pronoMine').textContent = mine.score;
+    const others = (st.pronos || []).filter(x => x.name !== st.me?.name).length;
+    $('#pronoList').textContent = editing && !mine ? 'Chacun donne son score avant le coup d\'envoi.' : '';
+    $('#pronoList').classList.toggle('hidden', !(editing && !mine));
+    $('#pronoDone').title = others ? `${others} autre${others > 1 ? 's' : ''} prono${others > 1 ? 's' : ''} : voir le volet « Prono du groupe » sur la vidéo` : '';
   }
   $('#goalBar').classList.toggle('hidden', !(vest && st.myGoal));
   // Direct : calage automatique ; calage manuel (TOP) via le menu, ou tout de suite si le site ne permet pas le calage auto.
@@ -305,8 +317,9 @@ $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(
 $('#pGo').onclick = () => {
   const h = parseInt($('#pH').value, 10), a = parseInt($('#pA').value, 10);
   if (!(h >= 0 && h <= 20 && a >= 0 && a <= 20)) { $('#pH').classList.add('bad'); return; }
-  $('#pH').classList.remove('bad'); engine({ cmd: 'prono', score: `${h}-${a}` });
+  $('#pH').classList.remove('bad'); pronoEditing = false; engine({ cmd: 'prono', score: `${h}-${a}` });
 };
+$('#pronoDone').onclick = () => { pronoEditing = true; render(); $('#pH').focus(); };
 for (const id of ['#pH', '#pA']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#pGo').click(); });
 $('#goalCancel').onclick = () => engine({ cmd: 'goalCancel' });
 $('#cStart').onclick = () => engine({ cmd: 'calibStart' });
