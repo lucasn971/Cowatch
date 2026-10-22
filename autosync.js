@@ -32,7 +32,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const code = await A.p.textContent('#code');
   const B = await person('/tmp/claude-0/sb', 'kilian', 'Kilian', 0);
   await B.p.fill('#codeIn', code); await B.p.click('#joinBtn'); await B.p.waitForSelector('#room:not(.hidden)');
-  ok(await A.p.isVisible('#calib'), 'direct détecté tout seul : mode match');
+  ok(await A.p.evaluate(() => st && st.mode === 'live'), 'direct détecté tout seul : mode match');
   // Kilian arrive : Lucas (en avance) doit se mettre en pause ~5 s, sans TOP
   let pausedA = false;
   for (let i = 0; i < 40 && !pausedA; i++) { pausedA = await paused(A); if (!pausedA) await sleep(250); }
