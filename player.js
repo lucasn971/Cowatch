@@ -1,6 +1,16 @@
 // Content script : repère la vidéo principale de la page et applique / émet les commandes de lecture.
 (() => {
-  if (window.__salonSync) return; window.__salonSync = true;
+  // Une seule instance vivante par page. Après une mise à jour de Cowatch, l'ancienne instance reste dans la page
+  // (sans pouvoir parler à l'extension) : la nouvelle prend la main et efface ses restes (languette morte, etc.).
+  const INST = Math.random().toString(36).slice(2);
+  window.__salonSync = INST;
+  const alive = () => window.__salonSync === INST && !!(chrome.runtime && chrome.runtime.id);
+  const mine = el => { el.dataset.cwInst = INST; return el; };
+  const stale = n => n.nodeType === 1 && typeof n.id === 'string' && n.id.startsWith('cowatch-') && n.dataset.cwInst !== INST;
+  document.querySelectorAll('[id^="cowatch-"]').forEach(n => { if (stale(n)) n.remove(); });
+  const sweeper = new MutationObserver(muts => { if (!alive()) return; for (const m of muts) for (const n of m.addedNodes) if (stale(n)) n.remove(); });
+  sweeper.observe(document.documentElement, { childList: true, subtree: true });
+  const retire = setInterval(() => { if (alive()) return; clearInterval(retire); sweeper.disconnect(); document.querySelectorAll('[id^="cowatch-"]').forEach(n => { if (n.dataset.cwInst === INST) n.remove(); }); }, 2000);
   let video = null, me = null, host = null, offset = 0, ignoreUntil = 0, stateTimer = null, mode = 'vod', alignTimer = null;
   const DRIFT = 0.8;           // tolérance de dérive en secondes avant recalage
   const isHost = () => me && me === host;
@@ -18,7 +28,8 @@
   const ourUi = t => t && t.closest && t.closest('[id^="cowatch-"]');
   for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'contextmenu']) {
     window.addEventListener(type, e => {
-      const el = ourUi(e.target); if (!el) return;
+      if (!alive()) return;
+      const el = ourUi(e.target); if (!el || el.dataset.cwInst !== INST) return;
       uiTouchAt = Date.now();
       e.stopImmediatePropagation(); // personne d'autre (le lecteur du site) ne voit ce clic
       if (type === 'click') { // on déclenche nous-mêmes l'action de l'élément cliqué
@@ -182,7 +193,7 @@
   function layer(id, css) {
     if (!isDisplayFrame()) { layers[id]?.remove(); return null; }
     let el = layers[id];
-    if (!el) { el = layers[id] = document.createElement('div'); el.id = id; el.style.cssText = 'position:fixed;z-index:2147483646;pointer-events:none;' + css; }
+    if (!el) { el = layers[id] = mine(document.createElement('div')); el.id = id; el.style.cssText = 'position:fixed;z-index:2147483646;pointer-events:none;' + css; }
     const par = layerParent(); if (el.parentNode !== par) par.append(el);
     return el;
   }
@@ -486,7 +497,7 @@
     if (!show) { reopenEl?.remove(); return; }
     const t = th();
     if (!reopenEl) {
-      reopenEl = document.createElement('button'); reopenEl.id = 'cowatch-reopen'; reopenEl.type = 'button';
+      reopenEl = mine(document.createElement('button')); reopenEl.id = 'cowatch-reopen'; reopenEl.type = 'button';
       reopenEl.onclick = async e => {
         e.stopPropagation();
         uiTouchAt = Date.now();
