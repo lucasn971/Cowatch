@@ -49,7 +49,7 @@ require('fs').mkdirSync(SHOTS, { recursive: true });
   await B.v.evaluate(() => document.querySelector('video').dispatchEvent(new Event('error')));
   ok(await until(() => B.p.isVisible('#issueBar')), 'erreur de la vidéo : « Petit souci détecté · Copier le rapport »');
   await B.p.click('#issueGo'); await sleep(4200);
-  const rep = await B.p.inputValue('#diagOut'); require('fs').writeFileSync('/tmp/claude-0/rep.txt', rep);
+  const rep = await B.p.inputValue('#diagOut');
   ok(rep.startsWith('DIAGNOSTIC COWATCH') && /erreur vidéo/.test(rep) && /entrée dans/.test(rep) && /connexion salon : ok/.test(rep), 'le rapport contient le journal (entrée, connexion, erreur vidéo)');
   ok(/"salon": "[A-Z0-9]+"/.test(rep) && /"frames"/.test(rep), 'le rapport contient l\'état du salon et l\'analyse du lecteur');
   ok(await B.p.isHidden('#issueBar'), 'rapport copié : le bandeau disparaît');
