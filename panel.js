@@ -137,7 +137,28 @@ function setInvite(code) {
   $('#create').textContent = inviteCode ? `Rejoindre le salon ${inviteCode}` : 'Créer un salon';
 }
 $('#codeIn').addEventListener('input', () => { if (inviteCode && codeFrom($('#codeIn').value) !== inviteCode) setInvite(''); });
-$('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c, 'join'); else showErr('Colle le lien d\'invitation reçu.', '#codeIn'); };
+$('#joinBtn').onclick = () => {
+  const v = $('#codeIn').value, c = codeFrom(v);
+  if (!c) return showErr('Colle le lien d\'invitation reçu.', '#codeIn');
+  if (join(c, 'join') !== false) openTarget(targetFrom(v)); // lien collé : on ouvre aussi la page que regarde celui qui invite
+};
+// Page de la plateforme jointe au lien d'invitation (…/j/CODE?u=…) : seulement les sites où Cowatch fonctionne.
+const SITES = ['netflix.com', 'primevideo.com', 'amazon.fr', 'amazon.com', 'disneyplus.com', 'canalplus.com', 'tf1.fr', 'paramountplus.com', 'youtube.com'];
+function targetFrom(v) {
+  try {
+    const u = new URL(new URL(String(v || '').trim()).searchParams.get('u') || '');
+    if (u.protocol === 'https:' && SITES.some(h => u.hostname === h || u.hostname.endsWith('.' + h))) return u.toString();
+  } catch {}
+  return '';
+}
+async function openTarget(url) {
+  if (!url) return;
+  try {
+    const cur = tabId != null ? await chrome.tabs.get(tabId) : null, a = new URL(url), b = cur && cur.url ? new URL(cur.url) : null;
+    if (b && b.hostname === a.hostname && b.pathname === a.pathname) return; // déjà sur la bonne page
+    await chrome.tabs.create({ url, active: true }); // le salon suivra cet onglet dès que la vidéo y apparaît
+  } catch {}
+}
 $('#codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
 $('#name').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#codeIn').value.trim() ? $('#joinBtn') : $('#create')).click(); });
 function join(code, from, pre) {

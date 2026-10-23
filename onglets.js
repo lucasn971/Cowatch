@@ -56,6 +56,11 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   ok((await p.textContent('#create')) === 'Rejoindre le salon INVIT', `invitation sans pseudo : le gros bouton dit « ${await p.textContent('#create')} »`);
   await p.fill('#name', 'Octave'); await p.click('#create');
   ok(await until(async () => (await p.textContent('#code')) === 'INVIT' && await p.isVisible('#room'), 10000), 'pseudo tapé + gros bouton : on entre dans le salon de l\'invitation (pas de salon à côté)');
+  // Lien d'invitation collé dans le panneau : Cowatch ouvre aussi la page que regardait celui qui invite (essai réel du 23/10).
+  await p.click('#menuBtn'); await p.click('#leave'); await p.waitForSelector('#home:not(.hidden)');
+  await p.fill('#codeIn', `${BASE}/j/COLLE?u=${encodeURIComponent('https://www.netflix.com/watch/81234567')}`); await p.click('#joinBtn');
+  ok(await until(async () => (await p.textContent('#code')) === 'COLLE', 10000), 'lien collé : on entre dans le salon');
+  ok(await until(() => sw.evaluate(async () => (await chrome.tabs.query({})).some(t => (t.pendingUrl || t.url || '').includes('netflix.com/watch/81234567')))), 'et la page Netflix de celui qui invite s\'ouvre');
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
   await c.close(); process.exit();
 })().catch(e => { console.error(e); process.exit(1); });
