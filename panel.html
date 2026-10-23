@@ -18,10 +18,11 @@
 <div id="menu" class="menu hidden" role="menu">
   <div class="menu-code small">Code du salon <b id="code"></b></div>
   <button role="menuitem" id="mTheme">Changer d'ambiance</button>
+  <button role="menuitem" id="mRecap">Fin du match · récap</button>
   <button role="menuitem" id="mCalib">Calage manuel (TV)</button>
   <button role="menuitem" id="photoBtn">Ajouter ma photo</button>
   <button role="menuitem" id="photoDel" class="hidden">Retirer ma photo</button>
-  <button role="menuitem" id="diag">Diagnostic</button>
+  <button role="menuitem" id="diag">Copier le rapport (souci)</button>
   <button role="menuitem" id="leave">Quitter le salon</button>
 </div>
 <input type="file" id="photoIn" accept="image/*" class="hidden">
@@ -47,6 +48,7 @@
 
 <!-- Salon -->
 <div id="room" class="hidden">
+  <div id="issueBar" class="block goal hidden"><span class="small">Petit souci détecté</span><button id="issueGo" class="ghost small">Copier le rapport</button></div>
   <div id="invBar" class="block goal hidden"><span class="small">Invitation au salon <b id="invCode"></b></span><button id="invGo" class="ghost small">Rejoindre</button></div>
   <div class="now">
     <span id="nowTitle" class="now-title"></span>
@@ -70,6 +72,14 @@
     <button id="pronoDone" class="prono-done hidden" aria-label="Modifier mon prono"><span class="kicker">Ton prono</span> <b id="pronoMine"></b> <span class="small muted">· modifier</span></button>
     <div id="pronoList" class="small muted"></div>
   </div>
+  <!-- Fin du match : le créateur du salon donne le score final, puis tout le monde voit le récap -->
+  <div id="recapEdit" class="block hidden">
+    <div class="prono-edit"><span class="kicker" id="recapAsk">Score final</span>
+      <span id="recapScore" class="row"><input id="rH" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à domicile"><span class="dash">-</span><input id="rA" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à l'extérieur"></span>
+      <button id="rGo" class="ghost small">Récap</button></div>
+    <button id="rCancel" class="link small">Annuler</button>
+  </div>
+  <div id="recap" class="block recap hidden" aria-live="polite"></div>
   <div id="goalBar" class="block goal hidden"><span>Tu as crié <b>BUUUT</b></span><button id="goalCancel" class="ghost small">Annuler (VAR)</button></div>
 
   <div id="calib" class="block hidden">

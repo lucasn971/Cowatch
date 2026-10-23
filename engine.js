@@ -10,7 +10,7 @@
     server: '', code: null, me: null, tabId: null, mode: 'vod', muted: false, needMic: false, err: '',
     video: false, live: null, calib: null, autosync: null,
     joining: false, wake: false, micErr: '', noAutoClock: false,
-    theme: 'vestiaire', owner: false, pronos: [], myGoal: null, title: '',
+    theme: 'vestiaire', owner: false, pronos: [], myGoal: null, title: '', recap: null,
   };
   let wantTheme = 'vestiaire', lastPos = null; // lastPos : dernière position de la vidéo de l'onglet {pos, kind, playing, at}
   // Position actuelle (extrapolée) de la vidéo : jointe aux réactions pour qu'elles arrivent au bon moment chez chacun.
@@ -41,7 +41,24 @@
       peers: [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.avatar || null, state: p.state || '', speaking: !!p.speaking, self: p.id === S.me?.id, muted: p.id === S.me?.id ? S.muted : !!p.muted })) };
   }
   function addLog(item) { log.push(item); if (log.length > 150) log.shift(); EMIT({ ev: 'log', item }); }
-  const sys = text => addLog({ kind: 'sys', text, at: Date.now() });
+  const sys = text => { trace('message', text); addLog({ kind: 'sys', text, at: Date.now() }); };
+
+  // ---------- Diagnostic automatique ----------
+  // Journal des derniers événements (connexions, voix, vidéo, calage) ; un souci allume « Copier le rapport » dans le panneau.
+  const J = []; S.issue = null;
+  function trace(k, d, bad) {
+    J.push([Date.now(), k, String(d ?? '').slice(0, 160)]); if (J.length > 250) J.shift();
+    if (bad) { S.issue = { k, d: String(d ?? '').slice(0, 90), at: Date.now() }; snap(); }
+  }
+  function report() {
+    const hm = t => new Date(t).toTimeString().slice(0, 8);
+    return { at: new Date().toISOString(), salon: S.code, mode: S.mode, ambiance: S.theme,
+      moi: S.me?.name || null, video: S.video, direct: S.live, heureReelle: !S.noAutoClock, micro: localStream ? (S.muted ? 'coupé' : 'ouvert') : (S.micErr || 'aucun'),
+      connexions: { salon: wsS?.readyState === 1 ? 'ok' : 'coupée', lecteur: wsP?.readyState === 1 ? 'ok' : 'coupée', reessais: retryS + retryP },
+      voix: [...peers.values()].filter(p => p.kind === 'salon' && p.id !== S.me?.id).map(p => `${p.name} : ${p.state || '?'}${p.audio?.srcObject ? ' (son reçu)' : ''}`),
+      souci: S.issue ? `${S.issue.k} — ${S.issue.d}` : null,
+      journal: J.slice(-120).map(([t, k, d]) => `${hm(t)} ${k}${d ? ' : ' + d : ''}`) };
+  }
 
   // ---------- Vers l'onglet de la plateforme ----------
   function toTab(m) {
@@ -60,10 +77,13 @@
     switch (m.cmd) {
       case 'hello': if (m.tabId != null && !S.code) S.tabId = m.tabId; snap(true); if (S.code) toTab({ t: 'ping-video' }); break;
       case 'join': return join(m);
-      case 'leave': return leave();
+      case 'leave': trace('salon', 'quitté'); return leave();
+      case 'report': return report();
+      case 'issueSeen': S.issue = null; snap(); return;
       case 'bindTab': // le salon suit l'onglet où l'on regarde (panneau ouvert sur un autre onglet, vidéo ouverte après coup)
         if (m.tabId == null || m.tabId === S.tabId) return;
         if (S.code) toTab({ t: 'disconnected', quiet: true });
+        trace('onglet', 'le salon suit un autre onglet');
         S.tabId = m.tabId; S.video = false; S.title = '';
         if (S.code && lastWelcome) { toTab(lastWelcome); pushRoster(); }
         toTab({ t: 'ping-video' }); snap(); return;
@@ -76,6 +96,8 @@
       case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); sendS({ t: 'mute', muted: S.muted }); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
       case 'theme': if (S.code) sendS({ t: 'theme', theme: m.theme }); else wantTheme = m.theme; break;
       case 'prono': sendS({ t: 'prono', score: m.score }); break;
+      case 'recap': sendS({ t: 'recap', score: m.score || '' }); break;
+      case 'recapClose': S.recap = null; snap(); break;
       case 'goalCancel': if (S.myGoal) { sendS({ t: 'goal-cancel', id: S.myGoal.id }); S.myGoal = null; snap(); } break;
       case 'avatar': myAvatar = m.avatar || null; sendS({ t: 'avatar', avatar: myAvatar }); pushRoster(); break;
       case 'calibStart': sendS({ t: 'calib-start', label: 'le score change à l\'écran (ou le prochain coup de sifflet)' }); break;
@@ -94,7 +116,8 @@
       const no = !(Number(m.pos) > 1e8); if (no !== S.noAutoClock) { S.noAutoClock = no; snap(); }
     }
     if (m.cmd === 'hello' && lastWelcome) { toTab(lastWelcome); pushRoster(); }
-    if (m.cmd === 'video') { S.video = !!m.found; snap(); }
+    if (m.cmd === 'video') { if (S.video !== !!m.found) trace('vidéo', m.found ? 'détectée' : 'perdue', !m.found && !!S.code); S.video = !!m.found; snap(); }
+    if (m.cmd === 'trace') trace(m.k, m.d, m.bad);
     if (m.cmd === 'pos') lastPos = { pos: +m.pos, kind: m.kind, playing: !!m.playing, at: Date.now() };
     if (m.cmd === 'title' && m.title !== S.title) { S.title = String(m.title || '').slice(0, 80); snap(); }
     if (m.cmd === 'kind') { S.live = !!m.live; autoMode(); snap(); }
@@ -104,6 +127,7 @@
       reply({ audio: [...peers.values()].filter(p => p.audio && p.audio.srcObject && p.audio.srcObject.getAudioTracks().length).length, mic: !!localStream, inRoom: !!S.me?.id });
       return;
     }
+    if (m.to === 'engine' && m.cmd === 'report') { try { reply(report()); } catch (e) { reply({ erreur: String(e) }); } return; }
     if (m.to === 'engine') { handle(m); return; }
     if (m.cmd === 'micGranted') { handle(m); return; }
     if (sender.tab && sender.tab.id === S.tabId) fromTab(m);
@@ -117,7 +141,7 @@
     if (S.code === code && S.me) { snap(true); return; } // déjà dans ce salon (ou en train d'y entrer) : on ignore le double clic
     if (S.code) leave(true);
     S.server = m.server; S.tabId = m.tabId ?? S.tabId; myAvatar = m.avatar || null; S.err = '';
-    S.me = { name: m.name }; S.code = code; S.joining = true; S.wake = false;
+    S.me = { name: m.name }; S.code = code; S.joining = true; S.wake = false; trace('salon', `entrée dans ${code} (${m.from || 'join'})`);
     if (m.theme) wantTheme = m.theme;
     retryS = retryP = 0; outbox = []; snap();
     // Micro et serveurs de voix en parallèle : la connexion au salon n'attend pas.
@@ -136,7 +160,7 @@
     goneTimers.forEach(clearTimeout); goneTimers.clear(); clearTimeout(lostTimer); lostShown = false;
     localStream?.getTracks().forEach(t => t.stop()); localStream = null;
     toTab({ t: 'disconnected' });
-    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false, micErr: '', joining: false, wake: false, owner: false, pronos: [], myGoal: null });
+    Object.assign(S, { me: null, mode: 'vod', calib: null, autosync: null, err: '', needMic: false, micErr: '', joining: false, wake: false, owner: false, pronos: [], myGoal: null, recap: null });
     lastWelcome = null; if (!quiet) snap(true);
     // Le moteur reste ouvert : on peut recréer ou rejoindre un salon tout de suite.
   }
@@ -144,7 +168,7 @@
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       S.needMic = false; S.micErr = '';
-    } catch (e) { localStream = null; S.needMic = true; S.micErr = (e && e.name) || 'Error'; }
+    } catch (e) { localStream = null; S.needMic = true; S.micErr = (e && e.name) || 'Error'; trace('micro', `refusé (${S.micErr})`, S.micErr !== 'NotAllowedError'); }
     snap();
   }
   async function reconnectWithMic() {
@@ -173,6 +197,7 @@
     };
     ws.onclose = () => {
       clearTimeout(slow); clearInterval(pingS); if (ws !== wsS || !S.code) return;
+      trace('connexion salon', `coupée (essai ${retryS + 1})`, retryS >= 2);
       const d = backoff(retryS++);
       if (S.me?.id && !S.joining) {
         S.joining = true; snap();
@@ -183,7 +208,7 @@
     ws.onmessage = async ev => {
       if (ws !== wsS) return;
       const m = JSON.parse(ev.data);
-      if (m.t === 'error') { S.err = m.msg; S.joining = false; snap(); return; }
+      if (m.t === 'error') { S.err = m.msg; S.joining = false; trace('erreur serveur', m.msg, true); snap(); return; }
       if (m.t === 'welcome') {
         clearTimeout(slow); retryS = 0; S.err = ''; S.wake = false; ws.ok = true;
         const first = !S.me.id, back = !first && S.joining; S.joining = false;
@@ -196,6 +221,7 @@
         S.mode = m.mode === 'live' ? 'live' : 'vod';
         S.theme = m.theme || S.theme; S.owner = !!m.owner; S.pronos = m.pronos || [];
         clearTimeout(lostTimer);
+        trace('connexion salon', first ? `ok, ${m.peers.length} autre(s) connexion(s)` : 'reconnecté');
         if (first) sys('Salon prêt'); else if (back && lostShown) sys('Reconnecté');
         lostShown = false;
         pushRoster(); autoMode(); snap(true);
@@ -216,6 +242,7 @@
       if (m.t === 'mute') { const p = peers.get(m.id); if (p) { p.muted = !!m.muted; pushRoster(); snap(); } }
       if (m.t === 'theme') { S.theme = m.theme; if (lastWelcome) lastWelcome.theme = m.theme; sys(`Ambiance : ${(self.CowatchThemes?.THEMES[m.theme] || {}).name || m.theme}`); pushRoster(); snap(); }
       if (m.t === 'pronos') { S.pronos = m.items || []; pushRoster(); snap(); }
+      if (m.t === 'recap') { const fresh = !S.recap || S.recap.at !== m.at; S.recap = m; trace('récap', m.score || 'sans score'); if (fresh && Date.now() - m.at < 60000) sys('Récap de la soirée'); snap(); }
       if (m.t === 'goal' && m.from === S.me.id) { // c'est moi qui ai crié : je peux annuler (VAR) pendant 20 s
         S.myGoal = { id: m.id, until: Date.now() + 20000 }; snap();
         setTimeout(() => { if (S.myGoal && S.myGoal.id === m.id) { S.myGoal = null; snap(); } }, 20000);
@@ -248,13 +275,13 @@
     clearTimeout(timerP); closeWs(wsP);
     const ws = wsP = new WebSocket(wsUrl());
     ws.onopen = () => { ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'player', cid: CID })); clearInterval(pingP); pingP = setInterval(() => sendP({ t: 'ping' }), 20000); };
-    ws.onclose = () => { clearInterval(pingP); if (ws !== wsP || !S.code) return; timerP = setTimeout(() => { if (S.code && ws === wsP) connectPlayer(); }, backoff(retryP++)); };
+    ws.onclose = () => { clearInterval(pingP); if (ws !== wsP || !S.code) return; trace('connexion lecteur', `coupée (essai ${retryP + 1})`, retryP >= 2); timerP = setTimeout(() => { if (S.code && ws === wsP) connectPlayer(); }, backoff(retryP++)); };
     ws.onmessage = ev => {
       if (ws !== wsP) return;
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(lastWelcome); pushRoster(); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
-      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme'].includes(m.t)) toTab(m);
+      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme', 'recap'].includes(m.t)) toTab(m);
     };
   }
   // Mode choisi automatiquement : direct (match) ou replay / série, selon la vidéo de l'onglet.
@@ -273,6 +300,7 @@
     };
     pc.onconnectionstatechange = () => {
       const p = peers.get(id); if (p) p.state = pc.connectionState; snap();
+      trace('voix', `${p?.name || id} : ${pc.connectionState}`, pc.connectionState === 'failed');
       if (pc.connectionState === 'failed') sys(`Voix impossible avec ${p?.name || 'un participant'} : réseau trop restrictif (souvent la 4G). Le chat fonctionne.`);
     };
     peers.get(id).pc = pc; return pc;

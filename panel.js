@@ -140,7 +140,7 @@ function join(code, from, pre) {
   (async () => {
     await chrome.storage.local.set({ name });
     await startEngine();
-    await engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
+    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
   })();
   return true;
 }
@@ -233,6 +233,8 @@ async function refreshTitle() {
 }
 function render() {
   if (!st) return;
+  // Diagnostic automatique : un souci a été noté => un bouton pour copier le rapport (rien n'est envoyé tout seul).
+  $('#issueBar').classList.toggle('hidden', !(st.inRoom && st.issue));
   $('#playerStatus').textContent = st.video ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!st.video);
   $('#err').textContent = localErr || st.err || '';
   renderBusy();
@@ -240,11 +242,13 @@ function render() {
   if (st.inRoom && T.valid(st.theme) && st.theme !== theme) applyTheme(st.theme);
   if (!inChoice) { $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom); }
   else if (st.inRoom && choiceFor === 'create') { $('#choice').classList.add('hidden'); $('#room').classList.remove('hidden'); }
-  for (const id of ['#mTheme', '#mCalib', '#leave']) $(id).classList.toggle('hidden', !st.inRoom);
+  for (const id of ['#mTheme', '#mCalib', '#leave', '#mRecap']) $(id).classList.toggle('hidden', !st.inRoom);
+  if (st.inRoom && !st.owner) $('#mRecap').classList.add('hidden'); // le créateur du salon siffle la fin
   $('#foldBtn').classList.toggle('hidden', !st.inRoom || engineLocal);
   $('.menu-code').classList.toggle('hidden', !st.inRoom);
   if (st.inRoom && !st.owner) $('#mTheme').classList.add('hidden'); // seul celui qui a créé le salon change l'ambiance
-  if (!st.inRoom) return;
+  if (!st.inRoom) { $('#recap').classList.add('hidden'); $('#recapEdit').classList.add('hidden'); return; }
+  renderRecap();
   $('#code').textContent = st.code;
   refreshTitle();
   const t = T.get(theme);
@@ -382,13 +386,65 @@ $('#diag').onclick = async () => {
   chrome.tabs.sendMessage(tabId, { t: 'diag' }).catch(() => {});
   await new Promise(r => setTimeout(r, 3500));
   let page = ''; try { const tab = await chrome.tabs.get(tabId); page = new URL(tab.url).hostname; } catch {}
-  const report = { cowatch: chrome.runtime.getManifest().version, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
-    salon: st?.code || null, ambiance: theme, at: new Date().toISOString(), frames: diagParts };
+  const auto = await engine({ cmd: 'report' }) || {};
+  const report = { cowatch: chrome.runtime.getManifest().version, ...auto, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''), frames: diagParts };
+  engine({ cmd: 'issueSeen' }); $('#issueBar').classList.add('hidden');
   const txt = 'DIAGNOSTIC COWATCH\n' + JSON.stringify(report, null, 1);
   box.value = txt; box.classList.remove('hidden');
   let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch { box.select(); try { copied = document.execCommand('copy'); } catch {} }
   btn.disabled = false; btn.textContent = copied ? 'Copié ✓ — colle-le à Claude' : 'Sélectionne le texte et copie-le';
   // Aucune réponse de la page : Cowatch n'y tourne pas (onglet ouvert avant l'installation ou la mise à jour).
   if (!diagParts.length) { const t = 'Cowatch ne voit pas la vidéo : recharge la page du programme.'; $('#err').textContent = t; $('#net').textContent = t; }
-  setTimeout(() => { btn.textContent = 'Diagnostic'; }, 6000);
+  setTimeout(() => { btn.textContent = 'Copier le rapport (souci)'; if (copied) box.classList.add('hidden'); }, 6000);
 };
+
+$('#issueGo').onclick = () => $('#diag').click();
+
+// ---------- Récap de fin de match ----------
+// Le créateur du salon ouvre « Fin du match · récap » ; en Vestiaire il donne le score final pour juger les pronos.
+const fmtPos = (kind, pos) => {
+  if (kind === 'real') return new Date(pos * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const h = Math.floor(pos / 3600), m = Math.floor(pos % 3600 / 60), sec = Math.floor(pos % 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+const fmtDur = min => min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `${min} min`;
+$('#mRecap').onclick = () => {
+  const vest = theme === 'vestiaire';
+  $('#recapScore').classList.toggle('hidden', !vest); $('#recapAsk').textContent = vest ? 'Score final' : 'Fin de la séance';
+  $('#rGo').textContent = vest ? 'Récap' : 'Voir le récap';
+  $('#recapEdit').classList.remove('hidden'); if (vest) $('#rH').focus();
+};
+$('#rCancel').onclick = () => $('#recapEdit').classList.add('hidden');
+$('#rGo').onclick = () => {
+  let score = '';
+  if (theme === 'vestiaire') {
+    const h = $('#rH').value, a = $('#rA').value;
+    if (h === '' || a === '') { $(h === '' ? '#rH' : '#rA').focus(); return; }
+    score = `${Math.min(20, Math.max(0, parseInt(h, 10) || 0))}-${Math.min(20, Math.max(0, parseInt(a, 10) || 0))}`;
+  }
+  engine({ cmd: 'recap', score }); $('#recapEdit').classList.add('hidden');
+};
+for (const id of ['#rH', '#rA']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#rGo').click(); });
+let recapShown = null;
+function renderRecap() {
+  const r = st.recap, box = $('#recap');
+  if (!r) { box.classList.add('hidden'); recapShown = null; return; }
+  box.classList.remove('hidden');
+  if (recapShown === r.at) return; recapShown = r.at;
+  const vest = theme === 'vestiaire', esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const badge = { exact: '🎯 dans le mille', bon: '✓ bon vainqueur', rate: '✗' };
+  let h = `<div class="rc-head"><span class="kicker">${vest ? 'Récap du match' : 'Récap de la séance'}</span>${r.score ? `<span class="rc-score">${esc(r.score)}</span>` : ''}</div>`;
+  if (r.pronos.length) {
+    h += `<div class="kicker rc-sub">Pronos</div>`;
+    for (const p of r.pronos) h += `<div class="rc-line"><span>${esc(p.name)} <b>${esc(p.score)}</b></span><span class="muted">${p.res ? badge[p.res] : ''}</span></div>`;
+  }
+  if (r.buts.length) h += `<div class="rc-line"><span>${r.buts.length} BUUUT${r.buts.length > 1 ? 'S' : ''}</span><span class="muted">${r.buts.map(b => b.pos != null ? fmtPos(b.kind, b.pos) : '').filter(Boolean).join(' · ')}</span></div>`;
+  if (r.moments.length) {
+    h += `<div class="kicker rc-sub">Meilleurs moments</div>`;
+    for (const m of r.moments) h += `<div class="rc-line"><span>${fmtPos(m.kind, m.pos)}</span><span>${esc(m.emoji)} · ${m.n} réactions</span></div>`;
+  }
+  h += `<div class="small muted rc-sub">${r.reactions} réaction${r.reactions > 1 ? 's' : ''} · ${r.messages} message${r.messages > 1 ? 's' : ''} · ${fmtDur(r.duree)} ensemble</div>`;
+  h += `<button id="rClose" class="link small rc-close">Fermer</button>`;
+  box.innerHTML = h;
+  $('#rClose').onclick = () => engine({ cmd: 'recapClose' });
+}

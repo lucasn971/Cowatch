@@ -19,10 +19,14 @@
     vids.sort((a, b) => area(b) - area(a) || (a.paused - b.paused) || len(b) - len(a));
     return vids[0] || null;
   }
+  // Journal du diagnostic automatique (gardé par le moteur ; rien n'est envoyé au serveur).
+  const tr = (k, d, bad) => { try { chrome.runtime.sendMessage({ cmd: 'trace', k, d: String(d ?? ''), bad: !!bad }).catch(() => {}); } catch {} };
   function attach(v) {
     if (!v || v === video) return;
     video = v;
     chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {});
+    tr('vidéo', `${location.hostname} ${v.clientWidth}×${v.clientHeight}${isFinite(v.duration) ? '' : ' direct'}`);
+    v.addEventListener('error', () => tr('erreur vidéo', `code ${v.error?.code || '?'} ${v.error?.message || ''}`.trim(), true));
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {
       if (Date.now() < ignoreUntil || !me || mode !== 'vod') return; // en direct, chacun garde son flux
       emit(ev === 'seeked' ? 'seek' : ev);
@@ -100,8 +104,11 @@
     const drift = video.currentTime - target;
     if (m.action === 'state' && Math.abs(drift) < DRIFT && video.paused === !m.playing) return;
     quiet();
-    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) seekTo(target);
-    if (m.playing && video.paused) { try { await video.play(); } catch { banner('Clique sur ▶ pour rejoindre la lecture'); } }
+    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) {
+      seekTo(target); tr('synchro', `${m.action} de ${m.name || '?'} : écart ${drift.toFixed(2)} s`);
+      const v = video; setTimeout(() => { if (v === video && Math.abs(v.currentTime - (target + (m.playing ? 2 : 0))) > 2.5) tr('déplacement raté', `voulu ${target.toFixed(1)} s, obtenu ${v.currentTime.toFixed(1)} s`, true); }, 2000);
+    }
+    if (m.playing && video.paused) { try { await video.play(); } catch { banner('Clique sur ▶ pour rejoindre la lecture'); tr('lecture refusée', 'le site attend un clic'); } }
     if (!m.playing && !video.paused) video.pause();
   }
 
@@ -113,6 +120,7 @@
   //  - en retard (sec < 0) : on avance d'autant (le lecteur d'en face ne peut pas prendre plus de retard).
   function align(sec, auto) {
     if (!video || !sec) return;
+    tr('calage', `${sec > 0 ? 'avance' : 'retard'} ${Math.abs(sec).toFixed(2)} s${auto ? ' (auto)' : ''}`);
     clearTimeout(alignTimer); video.playbackRate = 1;
     if (sec < 0) {
       let to = video.currentTime - sec;
@@ -129,7 +137,7 @@
     quiet(sec * 1000 + 1500);
     video.pause();
     banner(auto ? `Calage avec le salon… (${sec.toFixed(1)} s)` : `Alignement : pause ${sec.toFixed(1)} s`);
-    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); } }, sec * 1000);
+    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); tr('reprise refusée', 'après la pause de calage', true); } }, sec * 1000);
   }
 
   // ---------- Calques Cowatch sur la vidéo ----------
@@ -433,6 +441,26 @@
 
   // ---------- Languette « Cowatch » sur le bord droit : rouvre le panneau, visible aussi en plein écran ----------
   let inRoom = false, panelOpen = true, unread = 0, reopenEl = null, lastNudge = 0;
+  // Récap de fin de match sur la vidéo : carte au centre, 15 s (un clic la ferme). Le détail reste dans le panneau.
+  function showRecap(r) {
+    if (!r || Date.now() - r.at > 60000) return;
+    const box = layer('cowatch-recap', 'left:50%;top:16%;transform:translateX(-50%);pointer-events:auto;cursor:pointer'); if (!box) return;
+    const t = th(), vest = theme === 'vestiaire';
+    const fp = (k, p) => k === 'real' ? new Date(p * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${Math.floor(p / 60)}'`;
+    box.style.cssText += `;min-width:280px;max-width:min(420px,80vw);background:${rgba(t.bg, .9)};color:${t.text};border:1px solid ${rgba(t.text, .18)};border-radius:16px;padding:16px 20px;font:500 14px ${t.body};box-shadow:0 18px 50px rgba(0,0,0,.5)`;
+    box.textContent = '';
+    const row = (a, b, big) => { const d = document.createElement('div'); d.style.cssText = `display:flex;justify-content:space-between;gap:16px;${big ? `font:800 30px ${t.display};letter-spacing:.04em;margin:2px 0 8px` : 'margin-top:4px'}`; const x = document.createElement('span'); x.textContent = a; const y = document.createElement('span'); y.textContent = b; d.append(x, y); box.append(d); };
+    const head = document.createElement('div'); head.textContent = vest ? 'RÉCAP DU MATCH' : 'RÉCAP DE LA SÉANCE'; head.style.cssText = `font:700 12px ${t.display};letter-spacing:.18em;opacity:.75`; box.append(head);
+    if (r.score) row('Score final', r.score, true);
+    const win = r.pronos.filter(p => p.res === 'exact'), good = r.pronos.filter(p => p.res === 'bon');
+    if (win.length) row('🎯 Dans le mille', win.map(p => p.name).join(', '));
+    if (good.length) row('✓ Bon vainqueur', good.map(p => p.name).join(', '));
+    if (r.score && r.pronos.length && !win.length && !good.length) row('Pronos', 'personne n\'a vu juste');
+    for (const m of r.moments) row(`Moment fort · ${fp(m.kind, m.pos)}`, `${m.emoji} · ${m.n} réactions`);
+    box.style.display = 'block'; box.style.opacity = '1';
+    box.onclick = e => { e.stopPropagation(); box.style.display = 'none'; };
+    clearTimeout(box._t); box._t = setTimeout(() => { box.style.display = 'none'; }, 15000);
+  }
   function renderReopen(nudge) {
     const show = inRoom && isDisplayFrame() && (isFs() || !panelOpen);
     if (!show) { reopenEl?.remove(); return; }
@@ -487,6 +515,7 @@
     else if (m.t === 'goal') onGoal(m);
     else if (m.t === 'goal-cancel') onGoalCancel(m);
     else if (m.t === 'theme') setTheme(m.theme);
+    else if (m.t === 'recap') showRecap(m);
     else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen || isFs()) { unread++; renderReopen('msg'); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);

@@ -115,3 +115,12 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .mic.need { background: var(--cw-accent); color: var(--cw-accent-ink) }
 .net { min-height: 14px; text-align: center }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+
+/* Récap de fin de match */
+.recap { gap: 6px }
+.recap .rc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px }
+.recap .rc-score { font: 800 26px var(--cw-display); letter-spacing: .04em }
+.recap .rc-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px }
+.recap .rc-line b { font-family: var(--cw-display); letter-spacing: .03em }
+.recap .rc-sub { margin-top: 4px }
+.recap .rc-close { align-self: flex-end }
