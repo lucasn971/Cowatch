@@ -501,7 +501,7 @@
   if (window.top !== window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
   chrome.runtime.onMessage.addListener((m, _s, reply) => {
     if (m.t === 'has-video') { if (video) reply(true); return; } // le panneau suit l'onglet où il y a une vidéo
-    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); renderBar(!panelOpen); return; }
+    if (m.t === 'panel') { if (!!m.open === panelOpen && !m.force) return; panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); renderBar(!panelOpen); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); pronos = m.pronos || []; if (m.theme) setTheme(m.theme); renderMuted(); renderProno(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }

@@ -63,6 +63,8 @@ async function startEngine() {
     if (m.cmd === 'video' && m.found && sender.tab && sender.tab.active && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin)) considerTab(sender.tab.id);
   });
   if (tabId != null) watchPanelFor(tabId);
+  // Rappel régulier à la page vidéo que le panneau est ouvert (l'arrière-plan de Chrome peut s'endormir et oublier) : pas de languette en double.
+  setInterval(() => { if (tabId != null && document.visibilityState === 'visible') chrome.tabs.sendMessage(tabId, { t: 'panel', open: true }).catch(() => {}); }, 4000);
   await startEngine();
   await engine({ cmd: 'hello', tabId });
   chrome.tabs.sendMessage(tabId, { t: 'ping-video' }).catch(() => {});
@@ -82,7 +84,7 @@ async function onInvite(p) {
   }
   $('#codeIn').value = p.code;
   if ($('#name').value.trim()) join(p.code, 'join');
-  else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
+  else { setInvite(p.code); showErr('Choisis ton pseudo pour rejoindre.', '#name'); }
 }
 $('#invGo').onclick = () => { const c = $('#invCode').textContent; $('#invBar').classList.add('hidden'); if (c) join(c, 'join'); };
 
@@ -124,8 +126,17 @@ $('#codeIn').addEventListener('input', () => { $('#codeIn').classList.remove('ba
 $('#create').onclick = () => {
   if (busy) return;
   if (!$('#name').value.trim()) return showErr('Choisis un pseudo.', '#name');
+  if (inviteCode) return join(inviteCode, 'join'); // arrivé par une invitation : le gros bouton rejoint ce salon
   openChoice('create');
 };
+// Arrivée par une invitation sans pseudo : le bouton principal devient « Rejoindre le salon X » (essai réel du 23/10 :
+// « Créer un salon » restait en avant et Lucas a créé un salon à côté). Vider le champ du code rend « Créer un salon ».
+let inviteCode = '';
+function setInvite(code) {
+  inviteCode = code || '';
+  $('#create').textContent = inviteCode ? `Rejoindre le salon ${inviteCode}` : 'Créer un salon';
+}
+$('#codeIn').addEventListener('input', () => { if (inviteCode && codeFrom($('#codeIn').value) !== inviteCode) setInvite(''); });
 $('#joinBtn').onclick = () => { const c = codeFrom($('#codeIn').value); if (c) join(c, 'join'); else showErr('Colle le lien d\'invitation reçu.', '#codeIn'); };
 $('#codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
 $('#name').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#codeIn').value.trim() ? $('#joinBtn') : $('#create')).click(); });
@@ -249,6 +260,7 @@ function render() {
   if (st.inRoom && !st.owner) $('#mTheme').classList.add('hidden'); // seul celui qui a créé le salon change l'ambiance
   if (!st.inRoom) { $('#recap').classList.add('hidden'); $('#recapEdit').classList.add('hidden'); return; }
   renderRecap();
+  if (inviteCode) setInvite('');
   $('#code').textContent = st.code;
   refreshTitle();
   const t = T.get(theme);
