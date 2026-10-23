@@ -12,6 +12,23 @@
     if (depth < 6) root.querySelectorAll('*').forEach(el => { if (el.shadowRoot) allVideos(el.shadowRoot, out, depth + 1); });
     return out;
   }
+  // Les clics sur Cowatch posé sur la vidéo (languette, barre d'émojis, volet prono, récap) ne doivent jamais atteindre
+  // le lecteur du site : Netflix met en pause au clic, et la synchro mettrait alors en pause tout le salon (essai de Lucas, 23/10).
+  let uiTouchAt = 0;
+  const ourUi = t => t && t.closest && t.closest('[id^="cowatch-"]');
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'contextmenu']) {
+    window.addEventListener(type, e => {
+      const el = ourUi(e.target); if (!el) return;
+      uiTouchAt = Date.now();
+      e.stopImmediatePropagation(); // personne d'autre (le lecteur du site) ne voit ce clic
+      if (type === 'click') { // on déclenche nous-mêmes l'action de l'élément cliqué
+        let n = e.target;
+        while (n && n !== el.parentNode && typeof n.onclick !== 'function') n = n.parentNode;
+        if (n && typeof n.onclick === 'function') n.onclick.call(n, e);
+      }
+      if (type === 'dblclick') e.preventDefault(); // pas de plein écran au double clic
+    }, true);
+  }
   function findVideo() {
     const vids = allVideos().filter(v => v.readyState > 0 || v.src || v.currentSrc);
     // Prime Video garde deux vidéos de même taille (pub + programme) : à taille égale, celle qui joue, puis la plus longue.
@@ -24,11 +41,14 @@
   function attach(v) {
     if (!v || v === video) return;
     video = v;
+    // Filet de sécurité : si le site met quand même en pause juste après un clic sur Cowatch, on relance aussitôt.
+    v.addEventListener('pause', () => { if (Date.now() - uiTouchAt < 1500 && Date.now() >= ignoreUntil && v === video) { quiet(); v.play().catch(() => {}); tr('pause évitée', 'clic sur Cowatch'); } });
     chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {});
     tr('vidéo', `${location.hostname} ${v.clientWidth}×${v.clientHeight}${isFinite(v.duration) ? '' : ' direct'}`);
     v.addEventListener('error', () => tr('erreur vidéo', `code ${v.error?.code || '?'} ${v.error?.message || ''}`.trim(), true));
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {
       if (Date.now() < ignoreUntil || !me || mode !== 'vod') return; // en direct, chacun garde son flux
+      if (ev === 'pause' && Date.now() - uiTouchAt < 1500) return; // pause causée par un clic sur Cowatch : jamais envoyée aux autres
       emit(ev === 'seeked' ? 'seek' : ev);
     });
   }
@@ -469,8 +489,11 @@
       reopenEl = document.createElement('button'); reopenEl.id = 'cowatch-reopen'; reopenEl.type = 'button';
       reopenEl.onclick = async e => {
         e.stopPropagation();
+        uiTouchAt = Date.now();
         if (isFs()) await (document.exitFullscreen?.() || Promise.resolve()).catch(() => {}); // le panneau ne s'affiche pas en plein écran
+        uiTouchAt = Date.now(); // certains lecteurs se mettent en pause en sortant du plein écran ou quand le panneau s'ouvre
         const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null);
+        uiTouchAt = Date.now();
         if (r && r.ok) { panelOpen = true; unread = 0; renderReopen(); }
       };
     }
