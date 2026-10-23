@@ -60,7 +60,8 @@ async function startEngine() {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
     // Une vidéo vient d'apparaître dans l'onglet affiché (page encore en chargement quand on y est allé) : le salon la prend.
-    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.active && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin)) considerTab(sender.tab.id);
+    // Aussi quand l'onglet suivi n'a pas de vidéo (panneau ouvert sur « Extensions », par exemple) : la vidéo d'un autre onglet de la fenêtre est prise.
+    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin) && (sender.tab.active || !(st && st.video))) considerTab(sender.tab.id);
   });
   if (tabId != null) watchPanelFor(tabId);
   // Rappel régulier à la page vidéo que le panneau est ouvert (l'arrière-plan de Chrome peut s'endormir et oublier) : pas de languette en double.
@@ -103,6 +104,13 @@ async function followTabs() {
     chrome.tabs.sendMessage(id, { t: 'ping-video' }).catch(() => {}); render();
   };
   chrome.tabs.onActivated.addListener(i => { if (myWin == null || i.windowId === myWin) consider(i.tabId); });
+  // En salon sans vidéo sur l'onglet suivi : on cherche toutes les 3 s une vidéo dans les autres onglets de la fenêtre.
+  setInterval(async () => {
+    if (!(st && st.inRoom) || st.video) return;
+    const tabs = await chrome.tabs.query(myWin == null ? { currentWindow: true } : { windowId: myWin }).catch(() => []);
+    tabs.sort((a, b) => (b.active - a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    for (const t of tabs) { if (t.id === tabId || !/^https?:/.test(t.url || '')) continue; if (await chrome.tabs.sendMessage(t.id, { t: 'has-video' }).catch(() => null)) { consider(t.id); return; } }
+  }, 3000);
   chrome.tabs.onUpdated.addListener((id, ch, tab) => { if (ch.status === 'complete' && tab.active && (myWin == null || tab.windowId === myWin)) { if (id === tabId) { titleAt = 0; render(); } else consider(id); } });
 }
 

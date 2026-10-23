@@ -34,6 +34,12 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   ok(linked, 'la vidéo est reliée au salon (bandeau « Salon connecté »)');
   ok(await until(async () => !(await v.evaluate(() => !!document.getElementById('cowatch-reopen'))), 3000), 'panneau ouvert sur la vidéo suivie : pas de languette « rouvrir »');
 
+  // Panneau resté sur un onglet sans vidéo alors que la vidéo est dans un onglet en arrière-plan (essai du 23/10, 20:10) :
+  // le salon la trouve tout seul.
+  await blank.bringToFront(); await sleep(800);
+  await p.evaluate(async id => { tabId = id; await engine({ cmd: 'bindTab', tabId: id }); }, await tabOf(BASE + '/')); // salon accroché à l'onglet sans vidéo
+  ok(await until(async () => /Aucune/.test(await p.textContent('#playerStatus')), 4000), 'salon accroché à un onglet sans vidéo (comme « Extensions »)');
+  ok(await until(async () => /détectée ✓/.test(await p.textContent('#playerStatus')), 10000), 'vidéo dans un onglet en arrière-plan : le salon la retrouve tout seul');
   // Retour sur l'onglet sans vidéo : le salon reste sur la vidéo.
   await blank.bringToFront(); await sleep(1500);
   ok(/détectée ✓/.test(await p.textContent('#playerStatus')), 'retour sur un onglet sans vidéo : le salon reste sur la vidéo');
