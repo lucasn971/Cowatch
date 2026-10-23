@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8080;
 const STRUCTURED = fs.existsSync(path.join(__dirname, '..', 'web', 'index.html'));
 const WEB_DIR = STRUCTURED ? path.join(__dirname, '..', 'web') : __dirname;
 // En mode "vrac", on ne sert QUE les fichiers publics (pas le code du serveur ni de l'extension).
-const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/sondage-anime.html', '/sondage-telerealite.html']);
+const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/installer.html', '/cowatch.zip', '/sondage-anime.html', '/sondage-telerealite.html']);
 
 // ---------- Sondages ----------
 // Les réponses partent dans le Google Sheet de Lucas (script Apps Script « Cowatch sondages »).
@@ -59,7 +59,7 @@ function recoitSondage(req, res) {
     }
   });
 }
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.zip': 'application/zip' };
 
 // ---------- HTTP statique ----------
 const server = http.createServer((req, res) => {
@@ -81,7 +81,8 @@ const server = http.createServer((req, res) => {
   let p = url.pathname === '/' ? '/index.html' : url.pathname;
   if (SONDAGE_PAGES[p.replace(/\/$/, '')]) p = SONDAGE_PAGES[p.replace(/\/$/, '')];
   if (/^\/s\/[A-Za-z0-9-]+$/.test(p)) p = '/index.html'; // salon web sans extension /s/CODE
-  if (/^\/j\/[A-Za-z0-9-]+$/.test(p)) p = '/join.html';  // invitation /j/CODE?u=<page de la plateforme>
+  if (/^\/j\/[A-Za-z0-9-]+$/.test(p)) p = '/join.html';
+  if (p === '/installer' || p === '/installer/') p = '/installer.html'; // page d'installation à envoyer aux potes  // invitation /j/CODE?u=<page de la plateforme>
   if (!STRUCTURED && !PUBLIC_FILES.has(p)) { res.statusCode = 404; res.end('404'); return; }
   const file = path.normalize(path.join(WEB_DIR, p));
   if (!file.startsWith(WEB_DIR)) { res.statusCode = 403; res.end(); return; }

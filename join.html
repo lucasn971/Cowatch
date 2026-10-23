@@ -13,7 +13,7 @@ main{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--l
 h1{font-size:22px;margin:14px 0 6px;letter-spacing:-.01em}
 .muted{color:var(--muted)}
 .code{font:700 22px ui-monospace,monospace;letter-spacing:3px}
-.btn{display:block;width:100%;text-align:center;border:0;border-radius:12px;padding:13px;background:var(--accent);color:var(--accent-ink);font:700 15px inherit;cursor:pointer;text-decoration:none;margin-top:16px}
+.btn{display:block;width:100%;text-align:center;border:0;border-radius:12px;padding:13px;background:var(--accent);color:var(--accent-ink);font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;margin-top:16px}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 ol{padding-left:20px;margin:10px 0 0}
 li{margin:6px 0}
@@ -30,7 +30,7 @@ li{margin:6px 0}
   <div id="install">
     <p class="muted" style="margin-top:16px">Pour regarder avec la voix, le chat et la lecture synchronisée, il faut l'extension Cowatch sur Chrome (ordinateur) :</p>
     <ol class="muted">
-      <li>Installe l'extension Cowatch (lien envoyé par la personne qui t'invite).</li>
+      <li><a id="inst" href="/installer" style="color:var(--text);font-weight:700">Installe l'extension Cowatch</a> (2 minutes, une seule fois).</li>
       <li>Recharge cette page, puis clique sur « Rejoindre le salon ».</li>
       <li>Connecte-toi à ton propre compte sur la plateforme.</li>
     </ol>
@@ -54,6 +54,7 @@ li{margin:6px 0}
   }
   const box = document.getElementById('join-data'); box.dataset.code = code; box.dataset.target = target;
   document.getElementById('noext').href = '/s/' + code;
+  document.getElementById('inst').href = '/installer?r=' + encodeURIComponent(location.pathname + location.search);
   if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) { // pas d'extension possible sur téléphone
     document.getElementById('install').innerHTML = '<p class="muted" style="margin-top:16px">Sur téléphone, tu rejoins le salon avec la voix et le chat. Lance le programme sur ton appli ou ta TV à côté.</p>';
     const b = document.getElementById('noext'); b.classList.remove('ghost'); b.textContent = 'Rejoindre depuis ce téléphone (voix + chat)';
