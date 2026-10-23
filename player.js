@@ -76,7 +76,7 @@
     if (!pendingJoin || Date.now() - pendingJoin.at > 30 * 60 * 1000) return;
     const b = document.createElement('button');
     b.textContent = `Rejoindre le salon ${pendingJoin.code}`;
-    b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#F4F6FA;color:#060A1C;border:0;border-radius:999px;padding:12px 18px;font:700 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
+    b.style.cssText = 'position:fixed;right:20px;top:84px;z-index:2147483647;background:#F4F6FA;color:#060A1C;border:0;border-radius:999px;padding:12px 18px;font:700 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
     b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Cowatch en haut à droite'; };
     document.documentElement.append(b);
   }).catch(() => {});
@@ -471,7 +471,8 @@
   setInterval(() => { if (inRoom && video && window.top === window || (inRoom && video && isDisplayFrame())) { const p = myPos(); if (p) chrome.runtime.sendMessage({ cmd: 'pos', ...p, playing: !video.paused }).catch(() => {}); } }, 1000);
 
   if (window.top !== window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
-  chrome.runtime.onMessage.addListener(m => {
+  chrome.runtime.onMessage.addListener((m, _s, reply) => {
+    if (m.t === 'has-video') { if (video) reply(true); return; } // le panneau suit l'onglet où il y a une vidéo
     if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); renderBar(!panelOpen); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); pronos = m.pronos || []; if (m.theme) setTheme(m.theme); renderMuted(); renderProno(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
@@ -489,6 +490,6 @@
     else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen || isFs()) { unread++; renderReopen('msg'); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);
-    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); renderProno(); renderBar(false); banner('Cowatch déconnecté'); }
+    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); renderProno(); renderBar(false); if (!m.quiet) banner('Cowatch déconnecté'); }
   });
 })();

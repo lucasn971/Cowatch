@@ -59,22 +59,58 @@ async function startEngine() {
   chrome.runtime.onMessage.addListener((m, sender) => {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
+    // Une vidéo vient d'apparaître dans l'onglet affiché (page encore en chargement quand on y est allé) : le salon la prend.
+    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.active && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin)) considerTab(sender.tab.id);
   });
-  // Signale à la page que le panneau est ouvert (sa languette « Cowatch » se calme) ; reconnexion si l'arrière-plan redémarre.
-  const watchPanel = () => { try { chrome.runtime.connect({ name: 'panel:' + tabId }).onDisconnect.addListener(() => setTimeout(watchPanel, 500)); } catch {} };
-  if (tabId != null) watchPanel();
+  if (tabId != null) watchPanelFor(tabId);
   await startEngine();
   await engine({ cmd: 'hello', tabId });
   chrome.tabs.sendMessage(tabId, { t: 'ping-video' }).catch(() => {});
   const { pendingJoin } = await chrome.storage.local.get('pendingJoin');
-  if (pendingJoin && Date.now() - pendingJoin.at < 30 * 60 * 1000 && !(st && st.inRoom)) {
-    $('#codeIn').value = pendingJoin.code;
-    await chrome.storage.local.remove('pendingJoin');
-    if ($('#name').value.trim()) join(pendingJoin.code, 'join');
-    else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
-  }
+  onInvite(pendingJoin);
+  chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.pendingJoin?.newValue) onInvite(ch.pendingJoin.newValue); });
+  followTabs();
 })();
 
+// Invitation cliquée (page /j/CODE) : on rejoint tout de suite ; si on est déjà dans un autre salon, on propose d'y aller.
+async function onInvite(p) {
+  if (!p || Date.now() - p.at > 30 * 60 * 1000) return;
+  await chrome.storage.local.remove('pendingJoin');
+  if (st && st.inRoom) {
+    if (st.code === p.code) return;
+    $('#invCode').textContent = p.code; $('#invBar').classList.remove('hidden'); return;
+  }
+  $('#codeIn').value = p.code;
+  if ($('#name').value.trim()) join(p.code, 'join');
+  else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
+}
+$('#invGo').onclick = () => { const c = $('#invCode').textContent; $('#invBar').classList.add('hidden'); if (c) join(c, 'join'); };
+
+// Le panneau latéral de Chrome est commun à tous les onglets : il suit l'onglet affiché.
+// Hors salon, il suit toujours l'onglet actif ; en salon, il ne bascule que vers un onglet qui a une vidéo.
+let myWin = null, followOn = false, considerTab = () => {};
+async function followTabs() {
+  if ((params.get('tab') && !params.get('follow')) || !chrome.tabs?.onActivated) return; // fenêtre séparée (Firefox, tests) : onglet fixé
+  try { myWin = (await chrome.windows.getCurrent()).id; } catch {}
+  followOn = true;
+  const consider = considerTab = async id => {
+    if (id == null || id === tabId) return;
+    if (st && st.inRoom) { const has = await chrome.tabs.sendMessage(id, { t: 'has-video' }).catch(() => null); if (!has) return; }
+    tabId = id; titleAt = 0; watchPanelFor(id);
+    engine({ cmd: 'bindTab', tabId: id }); engine({ cmd: 'hello', tabId: id });
+    chrome.tabs.sendMessage(id, { t: 'ping-video' }).catch(() => {}); render();
+  };
+  chrome.tabs.onActivated.addListener(i => { if (myWin == null || i.windowId === myWin) consider(i.tabId); });
+  chrome.tabs.onUpdated.addListener((id, ch, tab) => { if (ch.status === 'complete' && tab.active && (myWin == null || tab.windowId === myWin)) { if (id === tabId) { titleAt = 0; render(); } else consider(id); } });
+}
+
+// Signale à la page que le panneau est ouvert (sa languette « Cowatch » se calme) ; reconnexion si l'arrière-plan redémarre.
+let panelPort = null;
+function watchPanelFor(id) {
+  try { if (panelPort) { const old = panelPort; panelPort = null; old.disconnect(); } } catch {}
+  const open = () => { try { const p = chrome.runtime.connect({ name: 'panel:' + id }); panelPort = p; p.onDisconnect.addListener(() => { if (panelPort === p) setTimeout(() => { if (panelPort === p) open(); }, 500); }); } catch {} };
+  open();
+}
 function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
 // Accepte le lien d'invitation complet (…/j/CODE?u=…) ou le code seul.
 function codeFrom(v) { v = (v || '').trim(); const m = v.match(/\/(?:j|s)\/([A-Za-z0-9-]{3,24})/); return (m ? m[1] : /^[A-Za-z0-9-]{3,24}$/.test(v) ? v : '').toUpperCase(); }

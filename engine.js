@@ -61,6 +61,12 @@
       case 'hello': if (m.tabId != null && !S.code) S.tabId = m.tabId; snap(true); if (S.code) toTab({ t: 'ping-video' }); break;
       case 'join': return join(m);
       case 'leave': return leave();
+      case 'bindTab': // le salon suit l'onglet où l'on regarde (panneau ouvert sur un autre onglet, vidéo ouverte après coup)
+        if (m.tabId == null || m.tabId === S.tabId) return;
+        if (S.code) toTab({ t: 'disconnected', quiet: true });
+        S.tabId = m.tabId; S.video = false; S.title = '';
+        if (S.code && lastWelcome) { toTab(lastWelcome); pushRoster(); }
+        toTab({ t: 'ping-video' }); snap(); return;
       case 'chat': { // si la connexion est coupée, le message part dès le retour
         const v = String(m.text || '').trim(); if (!v || !S.code) break;
         if (!sendS({ t: 'chat', text: v })) { outbox.push({ t: 'chat', text: v }); sys('Message en attente : reconnexion…'); }
