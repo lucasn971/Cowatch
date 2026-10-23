@@ -1,7 +1,7 @@
 // Sur la page d'invitation (/j/CODE) : l'extension est installée, on remplace le bouton "installer" par "rejoindre".
 (() => {
+  document.documentElement.dataset.salonExtension = 'installed'; // aussi sur la page /installer : « Cowatch est installé »
   const box = document.getElementById('join-data'); if (!box) return;
-  document.documentElement.dataset.salonExtension = 'installed';
   const code = box.dataset.code, target = box.dataset.target;
   const btn = document.getElementById('join-go'); if (!btn) return;
   btn.hidden = false;

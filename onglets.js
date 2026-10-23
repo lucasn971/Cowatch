@@ -7,6 +7,7 @@ const BASE = 'http://localhost:8080';
 const EXT = path.resolve(__dirname, '../extension');
 const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await f().catch(() => false)) return true; await sleep(150); } return false; };
 
 (async () => {
   const c = await chromium.launchPersistentContext('/tmp/claude-0/ong', { headless: true, channel: 'chromium', args: [
@@ -31,6 +32,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(/test|Cowatch|lecteur/i.test(await p.textContent('#nowTitle')) || (await p.textContent('#nowTitle')) !== '', `titre du programme mis à jour (« ${await p.textContent('#nowTitle')} »)`);
   const linked = await v.evaluate(() => new Promise(r => { let n = 0; const t = setInterval(() => { if (document.getElementById('cowatch-banner') || ++n > 20) { clearInterval(t); r(!!document.getElementById('cowatch-banner')); } }, 200); }));
   ok(linked, 'la vidéo est reliée au salon (bandeau « Salon connecté »)');
+  ok(await until(async () => !(await v.evaluate(() => !!document.getElementById('cowatch-reopen'))), 3000), 'panneau ouvert sur la vidéo suivie : pas de languette « rouvrir »');
 
   // Retour sur l'onglet sans vidéo : le salon reste sur la vidéo.
   await blank.bringToFront(); await sleep(1500);
@@ -47,6 +49,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok((await p.textContent('#code')) === 'AUTRE' && !(await p.isVisible('#invBar')), 'un clic : on change de salon');
   await sleep(1500);
   ok(/détectée ✓/.test(await p.textContent('#playerStatus')), 'après changement de salon, la vidéo reste reliée');
+  // Nouvel utilisateur arrivé par une invitation (pas encore de pseudo) : le bouton principal rejoint, il ne crée pas.
+  await p.click('#menuBtn'); await p.click('#leave'); await p.waitForSelector('#home:not(.hidden)');
+  await p.fill('#name', '');
+  await p.evaluate(() => chrome.storage.local.set({ pendingJoin: { code: 'INVIT', at: Date.now() } })); await sleep(600);
+  ok((await p.textContent('#create')) === 'Rejoindre le salon INVIT', `invitation sans pseudo : le gros bouton dit « ${await p.textContent('#create')} »`);
+  await p.fill('#name', 'Octave'); await p.click('#create');
+  ok(await until(async () => (await p.textContent('#code')) === 'INVIT' && await p.isVisible('#room'), 10000), 'pseudo tapé + gros bouton : on entre dans le salon de l\'invitation (pas de salon à côté)');
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
   await c.close(); process.exit();
 })().catch(e => { console.error(e); process.exit(1); });
