@@ -48,16 +48,19 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .me-photo .avatar { width: 42px; height: 42px; font-size: 16px }
 
 /* Choix d'ambiance */
-#choice h1 { font: 700 24px/1.1 system-ui, sans-serif; letter-spacing: -.02em; margin: 6px 0 4px }
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0 }
-.card { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 16px; background: #18181B; border: 1px solid #2A2A2F; position: relative; color: #F5F5F2; font-family: system-ui, sans-serif }
+#choice h1 { font: 700 19px/1.15 system-ui, sans-serif; letter-spacing: -.02em; margin: 4px 0 10px }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px }
+.card { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 5px; padding: 5px; border-radius: 12px; background: #18181B; border: 1px solid #2A2A2F; position: relative; color: #F5F5F2; font-family: system-ui, sans-serif }
 .card[aria-checked="true"] { box-shadow: 0 0 0 3px #F5F5F2 }
 .card[aria-disabled="true"] { cursor: default; opacity: .55 }
 .card:focus-visible { outline: 2px solid #F5F5F2; outline-offset: 3px }
-.card .art { height: 92px; border-radius: 10px; position: relative; overflow: hidden }
+.card .art { height: 64px; border-radius: 8px; position: relative; overflow: hidden }
+.card .art { display: grid; place-items: center }
+.card .art .cw-emo { font-size: 15px; white-space: nowrap; letter-spacing: 0 }
+.card .art .cw-acc { position: absolute; left: 0; right: 0; bottom: 0; height: 4px }
 .card .art .cw-c1 { position: absolute; left: 10px; top: 10px; color: #F5F5F2 }
 .card .art .cw-c2 { position: absolute; left: 10px; bottom: 10px; color: #F5F5F2 }
-.card b { font-size: 14px } .card span.d { font-size: 11px; color: #A9A9B0; line-height: 1.35 }
+.card b { font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis } .card span.d { display: none }
 .choice-foot { display: flex; flex-direction: column; gap: 10px }
 
 /* Salon */
@@ -68,6 +71,8 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .synced .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cw-speaking) }
 .synced.wait .dot { background: var(--cw-muted) }
 .group { display: flex; flex-direction: column; gap: 6px }
+.group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px }
+.invite { background: var(--cw-accent); color: var(--cw-accent-ink); font: 800 12px var(--cw-display); text-transform: var(--cw-upper); font-style: var(--cw-italic); letter-spacing: .05em; padding: 7px 11px; border-radius: var(--cw-pill); min-height: 32px; white-space: nowrap }
 .peer { display: flex; align-items: center; gap: 10px; font-weight: 600; min-height: 34px }
 .peer .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .peer .tag { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--cw-muted) }
@@ -80,9 +85,14 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .slot .plus { width: 30px; height: 30px; border-radius: 50%; border: 1.5px dashed var(--cw-border); display: grid; place-items: center }
 @keyframes cwSpeak { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cw-speaking) 60%, transparent) } 70% { box-shadow: 0 0 0 10px transparent } 100% { box-shadow: 0 0 0 0 transparent } }
 .block { border: 1px solid var(--cw-border); border-radius: var(--cw-radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px }
-.prono-row input { width: 56px; text-align: center; font: 800 20px var(--cw-display) }
-.prono-row .dash { font: 800 20px var(--cw-display) }
-.prono-row button { margin-left: auto }
+.prono { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--cw-border); padding-top: 10px }
+.prono-edit { display: flex; align-items: center; gap: 6px }
+.prono-edit .kicker { margin-right: auto }
+.prono-edit input { width: 42px; padding: 6px 4px; text-align: center; font: 800 16px var(--cw-display) }
+.prono-edit .dash { font: 800 16px var(--cw-display) }
+.prono-edit button { min-height: 34px; padding: 6px 10px }
+.prono-done { all: unset; cursor: pointer; display: flex; align-items: baseline; gap: 6px }
+.prono-done b { font: 800 16px var(--cw-display) }
 .goal { flex-direction: row; align-items: center; justify-content: space-between }
 .goal b { font-family: var(--cw-display); letter-spacing: .05em }
 #cRes .res { display: flex; justify-content: space-between; font-size: 12px }
@@ -105,3 +115,12 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .mic.need { background: var(--cw-accent); color: var(--cw-accent-ink) }
 .net { min-height: 14px; text-align: center }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+
+/* Récap de fin de match */
+.recap { gap: 6px }
+.recap .rc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px }
+.recap .rc-score { font: 800 26px var(--cw-display); letter-spacing: .04em }
+.recap .rc-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px }
+.recap .rc-line b { font-family: var(--cw-display); letter-spacing: .03em }
+.recap .rc-sub { margin-top: 4px }
+.recap .rc-close { align-self: flex-end }

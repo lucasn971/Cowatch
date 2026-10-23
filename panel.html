@@ -12,15 +12,17 @@
 <header>
   <span class="logo">Cowatch</span>
   <span class="status small" id="playerStatus">Aucune vidéo détectée</span>
+  <button class="icon hidden" id="foldBtn" aria-label="Replier le panneau" title="Replier le panneau (la vidéo prend toute la place)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6l6 6-6 6M5 6l6 6-6 6"/></svg></button>
   <button class="icon" id="menuBtn" aria-label="Plus d'options" aria-haspopup="true" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
 </header>
 <div id="menu" class="menu hidden" role="menu">
   <div class="menu-code small">Code du salon <b id="code"></b></div>
   <button role="menuitem" id="mTheme">Changer d'ambiance</button>
+  <button role="menuitem" id="mRecap">Fin du match · récap</button>
   <button role="menuitem" id="mCalib">Calage manuel (TV)</button>
   <button role="menuitem" id="photoBtn">Ajouter ma photo</button>
   <button role="menuitem" id="photoDel" class="hidden">Retirer ma photo</button>
-  <button role="menuitem" id="diag">Diagnostic</button>
+  <button role="menuitem" id="diag">Copier le rapport (souci)</button>
   <button role="menuitem" id="leave">Quitter le salon</button>
 </div>
 <input type="file" id="photoIn" accept="image/*" class="hidden">
@@ -38,38 +40,46 @@
 
 <!-- Ce soir, quelle ambiance ? -->
 <section id="choice" class="hidden">
-  <div class="small muted" id="choiceKicker">Avant de lancer le salon</div>
   <h1>Ce soir, quelle ambiance&nbsp;?</h1>
-  <div class="small muted">Tu pourras en changer à tout moment.</div>
   <div id="cards" class="cards" role="radiogroup" aria-label="Ambiances"></div>
-  <div class="choice-foot"><span class="small">Choix&nbsp;: <b id="pickedName"></b></span><button id="go" class="primary">C'est parti</button></div>
+  <div class="choice-foot"><span class="sr">Choix&nbsp;: <b id="pickedName"></b></span><button id="go" class="primary">C'est parti</button></div>
   <button id="choiceBack" class="link small">Retour</button>
 </section>
 
 <!-- Salon -->
 <div id="room" class="hidden">
+  <div id="issueBar" class="block goal hidden"><span class="small">Petit souci détecté</span><button id="issueGo" class="ghost small">Copier le rapport</button></div>
+  <div id="invBar" class="block goal hidden"><span class="small">Invitation au salon <b id="invCode"></b></span><button id="invGo" class="ghost small">Rejoindre</button></div>
   <div class="now">
     <span id="nowTitle" class="now-title"></span>
     <span id="synced" class="synced small"><span class="dot"></span><span id="syncedTxt">calés</span></span>
   </div>
   <div class="group">
-    <div class="kicker" id="groupTitle">Le groupe</div>
+    <div class="group-head"><span class="kicker" id="groupTitle">Le groupe</span><button id="invite" class="invite">Convoquer un pote</button></div>
     <div id="peers"></div>
   </div>
-  <button id="invite" class="primary">Convoquer un pote</button>
   <div id="micHelp" class="small warn hidden"></div>
 
   <!-- Bloc propre à l'ambiance : Vestiaire = prono d'avant-match -->
-  <div id="prono" class="block hidden">
-    <div class="kicker">Ton prono</div>
-    <div class="row prono-row">
+  <div id="prono" class="prono hidden">
+    <div id="pronoEdit" class="prono-edit">
+      <span class="kicker">Ton prono</span>
       <input id="pH" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à domicile">
       <span class="dash">-</span>
       <input id="pA" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à l'extérieur">
-      <button id="pGo" class="ghost">Valider</button>
+      <button id="pGo" class="ghost small">OK</button>
     </div>
+    <button id="pronoDone" class="prono-done hidden" aria-label="Modifier mon prono"><span class="kicker">Ton prono</span> <b id="pronoMine"></b> <span class="small muted">· modifier</span></button>
     <div id="pronoList" class="small muted"></div>
   </div>
+  <!-- Fin du match : le créateur du salon donne le score final, puis tout le monde voit le récap -->
+  <div id="recapEdit" class="block hidden">
+    <div class="prono-edit"><span class="kicker" id="recapAsk">Score final</span>
+      <span id="recapScore" class="row"><input id="rH" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à domicile"><span class="dash">-</span><input id="rA" type="number" min="0" max="20" inputmode="numeric" placeholder="0" aria-label="Buts de l'équipe à l'extérieur"></span>
+      <button id="rGo" class="ghost small">Récap</button></div>
+    <button id="rCancel" class="link small">Annuler</button>
+  </div>
+  <div id="recap" class="block recap hidden" aria-live="polite"></div>
   <div id="goalBar" class="block goal hidden"><span>Tu as crié <b>BUUUT</b></span><button id="goalCancel" class="ghost small">Annuler (VAR)</button></div>
 
   <div id="calib" class="block hidden">

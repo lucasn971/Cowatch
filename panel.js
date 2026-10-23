@@ -8,6 +8,7 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
 let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
+let pronoEditing = false;
 let theme = T.DEFAULT, picked = T.DEFAULT, choiceFor = 'create', calibOpen = false, lastLog = null, tabTitle = '', titleAt = 0;
 
 // ---------- Ambiance : variables CSS, polices, textes, émojis ----------
@@ -58,22 +59,58 @@ async function startEngine() {
   chrome.runtime.onMessage.addListener((m, sender) => {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
+    // Une vidéo vient d'apparaître dans l'onglet affiché (page encore en chargement quand on y est allé) : le salon la prend.
+    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.active && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin)) considerTab(sender.tab.id);
   });
-  // Signale à la page que le panneau est ouvert (sa languette « Cowatch » se calme) ; reconnexion si l'arrière-plan redémarre.
-  const watchPanel = () => { try { chrome.runtime.connect({ name: 'panel:' + tabId }).onDisconnect.addListener(() => setTimeout(watchPanel, 500)); } catch {} };
-  if (tabId != null) watchPanel();
+  if (tabId != null) watchPanelFor(tabId);
   await startEngine();
   await engine({ cmd: 'hello', tabId });
   chrome.tabs.sendMessage(tabId, { t: 'ping-video' }).catch(() => {});
   const { pendingJoin } = await chrome.storage.local.get('pendingJoin');
-  if (pendingJoin && Date.now() - pendingJoin.at < 30 * 60 * 1000 && !(st && st.inRoom)) {
-    $('#codeIn').value = pendingJoin.code;
-    await chrome.storage.local.remove('pendingJoin');
-    if ($('#name').value.trim()) join(pendingJoin.code, 'join');
-    else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
-  }
+  onInvite(pendingJoin);
+  chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.pendingJoin?.newValue) onInvite(ch.pendingJoin.newValue); });
+  followTabs();
 })();
 
+// Invitation cliquée (page /j/CODE) : on rejoint tout de suite ; si on est déjà dans un autre salon, on propose d'y aller.
+async function onInvite(p) {
+  if (!p || Date.now() - p.at > 30 * 60 * 1000) return;
+  await chrome.storage.local.remove('pendingJoin');
+  if (st && st.inRoom) {
+    if (st.code === p.code) return;
+    $('#invCode').textContent = p.code; $('#invBar').classList.remove('hidden'); return;
+  }
+  $('#codeIn').value = p.code;
+  if ($('#name').value.trim()) join(p.code, 'join');
+  else showErr('Choisis un pseudo puis clique sur Rejoindre.', '#name');
+}
+$('#invGo').onclick = () => { const c = $('#invCode').textContent; $('#invBar').classList.add('hidden'); if (c) join(c, 'join'); };
+
+// Le panneau latéral de Chrome est commun à tous les onglets : il suit l'onglet affiché.
+// Hors salon, il suit toujours l'onglet actif ; en salon, il ne bascule que vers un onglet qui a une vidéo.
+let myWin = null, followOn = false, considerTab = () => {};
+async function followTabs() {
+  if ((params.get('tab') && !params.get('follow')) || !chrome.tabs?.onActivated) return; // fenêtre séparée (Firefox, tests) : onglet fixé
+  try { myWin = (await chrome.windows.getCurrent()).id; } catch {}
+  followOn = true;
+  const consider = considerTab = async id => {
+    if (id == null || id === tabId) return;
+    if (st && st.inRoom) { const has = await chrome.tabs.sendMessage(id, { t: 'has-video' }).catch(() => null); if (!has) return; }
+    tabId = id; titleAt = 0; watchPanelFor(id);
+    engine({ cmd: 'bindTab', tabId: id }); engine({ cmd: 'hello', tabId: id });
+    chrome.tabs.sendMessage(id, { t: 'ping-video' }).catch(() => {}); render();
+  };
+  chrome.tabs.onActivated.addListener(i => { if (myWin == null || i.windowId === myWin) consider(i.tabId); });
+  chrome.tabs.onUpdated.addListener((id, ch, tab) => { if (ch.status === 'complete' && tab.active && (myWin == null || tab.windowId === myWin)) { if (id === tabId) { titleAt = 0; render(); } else consider(id); } });
+}
+
+// Signale à la page que le panneau est ouvert (sa languette « Cowatch » se calme) ; reconnexion si l'arrière-plan redémarre.
+let panelPort = null;
+function watchPanelFor(id) {
+  try { if (panelPort) { const old = panelPort; panelPort = null; old.disconnect(); } } catch {}
+  const open = () => { try { const p = chrome.runtime.connect({ name: 'panel:' + id }); panelPort = p; p.onDisconnect.addListener(() => { if (panelPort === p) setTimeout(() => { if (panelPort === p) open(); }, 500); }); } catch {} };
+  open();
+}
 function randomCode() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.getRandomValues(new Uint8Array(5)), x => a[x % a.length]).join(''); }
 // Accepte le lien d'invitation complet (…/j/CODE?u=…) ou le code seul.
 function codeFrom(v) { v = (v || '').trim(); const m = v.match(/\/(?:j|s)\/([A-Za-z0-9-]{3,24})/); return (m ? m[1] : /^[A-Za-z0-9-]{3,24}$/.test(v) ? v : '').toUpperCase(); }
@@ -103,7 +140,7 @@ function join(code, from, pre) {
   (async () => {
     await chrome.storage.local.set({ name });
     await startEngine();
-    await engine({ cmd: 'join', code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
+    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
   })();
   return true;
 }
@@ -137,7 +174,10 @@ function buildCards() {
     if (t.soon) b.setAttribute('aria-disabled', 'true');
     const art = document.createElement('div'); art.className = 'art'; art.style.background = t.cardBg;
     for (const [k, v] of Object.entries(T.vars(t.soon ? 'vestiaire' : id))) art.style.setProperty(k, v);
-    art.innerHTML = t.card; // contenu fixe de themes.js (pas de texte venant des utilisateurs)
+    // Aperçu compact : les couleurs et trois émojis de l'ambiance (pas de texte qui déborde).
+    const em = document.createElement('span'); em.className = 'cw-emo'; em.textContent = t.soon ? '' : t.emojis.slice(0, 3).join(' ');
+    const bar = document.createElement('i'); bar.className = 'cw-acc'; bar.style.background = t.soon ? '#2A2A30' : t.accent;
+    art.append(em, bar);
     const n = document.createElement('b'); n.textContent = t.soon ? `${t.name} · bientôt` : t.name;
     const d = document.createElement('span'); d.className = 'd'; d.textContent = t.desc;
     b.append(art, n, d);
@@ -152,7 +192,6 @@ function renderCards() {
 }
 function openChoice(forWhat) {
   choiceFor = forWhat; picked = forWhat === 'change' ? theme : picked; renderCards();
-  $('#choiceKicker').textContent = forWhat === 'change' ? 'Pour tout le salon' : 'Avant de lancer le salon';
   $('#home').classList.add('hidden'); $('#room').classList.add('hidden'); $('#choice').classList.remove('hidden');
   renderBusy();
 }
@@ -170,6 +209,12 @@ $('#go').onclick = () => {
 // ---------- Menu « … » ----------
 $('#menuBtn').onclick = e => { e.stopPropagation(); const open = $('#menu').classList.toggle('hidden') === false; $('#menuBtn').setAttribute('aria-expanded', String(open)); };
 document.addEventListener('click', e => { if (!$('#menu').contains(e.target)) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } });
+// Replier : le panneau se range, la vidéo prend toute la largeur (écran « plein écran » des maquettes) ; la languette le rouvre.
+$('#foldBtn').onclick = async () => {
+  if (engineLocal) return; // Firefox / Opera : le moteur vit dans le panneau, le fermer couperait la voix
+  try { await chrome.sidePanel?.close?.({ tabId }); } catch {}
+  window.close();
+};
 $('#menu').addEventListener('click', e => { if (e.target.closest('button')) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } }); // un choix referme le menu
 $('#mTheme').onclick = () => openChoice('change');
 $('#mCalib').onclick = () => { calibOpen = !calibOpen; if (calibOpen) $('#manual').open = true; render(); };
@@ -188,6 +233,8 @@ async function refreshTitle() {
 }
 function render() {
   if (!st) return;
+  // Diagnostic automatique : un souci a été noté => un bouton pour copier le rapport (rien n'est envoyé tout seul).
+  $('#issueBar').classList.toggle('hidden', !(st.inRoom && st.issue));
   $('#playerStatus').textContent = st.video ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!st.video);
   $('#err').textContent = localErr || st.err || '';
   renderBusy();
@@ -195,10 +242,13 @@ function render() {
   if (st.inRoom && T.valid(st.theme) && st.theme !== theme) applyTheme(st.theme);
   if (!inChoice) { $('#home').classList.toggle('hidden', st.inRoom); $('#room').classList.toggle('hidden', !st.inRoom); }
   else if (st.inRoom && choiceFor === 'create') { $('#choice').classList.add('hidden'); $('#room').classList.remove('hidden'); }
-  for (const id of ['#mTheme', '#mCalib', '#leave']) $(id).classList.toggle('hidden', !st.inRoom);
+  for (const id of ['#mTheme', '#mCalib', '#leave', '#mRecap']) $(id).classList.toggle('hidden', !st.inRoom);
+  if (st.inRoom && !st.owner) $('#mRecap').classList.add('hidden'); // le créateur du salon siffle la fin
+  $('#foldBtn').classList.toggle('hidden', !st.inRoom || engineLocal);
   $('.menu-code').classList.toggle('hidden', !st.inRoom);
   if (st.inRoom && !st.owner) $('#mTheme').classList.add('hidden'); // seul celui qui a créé le salon change l'ambiance
-  if (!st.inRoom) return;
+  if (!st.inRoom) { $('#recap').classList.add('hidden'); $('#recapEdit').classList.add('hidden'); return; }
+  renderRecap();
   $('#code').textContent = st.code;
   refreshTitle();
   const t = T.get(theme);
@@ -216,7 +266,7 @@ function render() {
     const tag = document.createElement('span'); tag.className = 'tag';
     el.append(av, n, tag); renderTag(el); box.append(el);
   }
-  if (st.peers.length < 8) { const s = document.createElement('button'); s.className = 'slot'; s.innerHTML = '<span class="plus" aria-hidden="true">+</span>'; s.append(document.createTextNode(others.length ? 'Inviter quelqu\'un d\'autre' : 'Place libre : inviter')); s.onclick = () => $('#invite').click(); box.append(s); }
+
   // Calés ?
   const live = st.mode === 'live', a = st.autosync, syncEl = $('#synced');
   const ok = others.length > 0 && (!live || (a && !st.noAutoClock));
@@ -235,14 +285,16 @@ function render() {
   const vest = theme === 'vestiaire';
   $('#prono').classList.toggle('hidden', !vest);
   if (vest) {
+    // Une fois le prono donné, le bloc se replie en une ligne ; les pronos de tout le monde sont sur la vidéo (volet à gauche).
     const mine = (st.pronos || []).find(x => x.name === st.me?.name);
+    const editing = !mine || pronoEditing;
     if (mine && document.activeElement !== $('#pH') && document.activeElement !== $('#pA')) { const [h, w] = mine.score.split('-'); $('#pH').value = h; $('#pA').value = w; }
-    $('#pGo').textContent = mine ? 'Modifier' : 'Valider';
-    const list = st.pronos || [];
-    const tally = {}; for (const x of list) tally[x.score] = (tally[x.score] || 0) + 1;
-    const top = Object.entries(tally).sort((x, y) => y[1] - x[1])[0];
-    $('#pronoList').textContent = !list.length ? 'Chacun donne son score avant le coup d\'envoi.'
-      : `Le groupe voit ${top[0]}${top[1] > 1 ? ` (${top[1]} sur ${list.length})` : ''} · ` + list.map(x => `${x.name} ${x.score}`).join(', ');
+    $('#pronoEdit').classList.toggle('hidden', !editing); $('#pronoDone').classList.toggle('hidden', editing);
+    if (mine) $('#pronoMine').textContent = mine.score;
+    const others = (st.pronos || []).filter(x => x.name !== st.me?.name).length;
+    $('#pronoList').textContent = editing && !mine ? 'Chacun donne son score avant le coup d\'envoi.' : '';
+    $('#pronoList').classList.toggle('hidden', !(editing && !mine));
+    $('#pronoDone').title = others ? `${others} autre${others > 1 ? 's' : ''} prono${others > 1 ? 's' : ''} : voir le volet « Prono du groupe » sur la vidéo` : '';
   }
   $('#goalBar').classList.toggle('hidden', !(vest && st.myGoal));
   // Direct : calage automatique ; calage manuel (TOP) via le menu, ou tout de suite si le site ne permet pas le calage auto.
@@ -305,8 +357,9 @@ $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(
 $('#pGo').onclick = () => {
   const h = parseInt($('#pH').value, 10), a = parseInt($('#pA').value, 10);
   if (!(h >= 0 && h <= 20 && a >= 0 && a <= 20)) { $('#pH').classList.add('bad'); return; }
-  $('#pH').classList.remove('bad'); engine({ cmd: 'prono', score: `${h}-${a}` });
+  $('#pH').classList.remove('bad'); pronoEditing = false; engine({ cmd: 'prono', score: `${h}-${a}` });
 };
+$('#pronoDone').onclick = () => { pronoEditing = true; render(); $('#pH').focus(); };
 for (const id of ['#pH', '#pA']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#pGo').click(); });
 $('#goalCancel').onclick = () => engine({ cmd: 'goalCancel' });
 $('#cStart').onclick = () => engine({ cmd: 'calibStart' });
@@ -333,13 +386,65 @@ $('#diag').onclick = async () => {
   chrome.tabs.sendMessage(tabId, { t: 'diag' }).catch(() => {});
   await new Promise(r => setTimeout(r, 3500));
   let page = ''; try { const tab = await chrome.tabs.get(tabId); page = new URL(tab.url).hostname; } catch {}
-  const report = { cowatch: chrome.runtime.getManifest().version, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
-    salon: st?.code || null, ambiance: theme, at: new Date().toISOString(), frames: diagParts };
+  const auto = await engine({ cmd: 'report' }) || {};
+  const report = { cowatch: chrome.runtime.getManifest().version, ...auto, page, ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''), frames: diagParts };
+  engine({ cmd: 'issueSeen' }); $('#issueBar').classList.add('hidden');
   const txt = 'DIAGNOSTIC COWATCH\n' + JSON.stringify(report, null, 1);
   box.value = txt; box.classList.remove('hidden');
   let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch { box.select(); try { copied = document.execCommand('copy'); } catch {} }
   btn.disabled = false; btn.textContent = copied ? 'Copié ✓ — colle-le à Claude' : 'Sélectionne le texte et copie-le';
   // Aucune réponse de la page : Cowatch n'y tourne pas (onglet ouvert avant l'installation ou la mise à jour).
   if (!diagParts.length) { const t = 'Cowatch ne voit pas la vidéo : recharge la page du programme.'; $('#err').textContent = t; $('#net').textContent = t; }
-  setTimeout(() => { btn.textContent = 'Diagnostic'; }, 6000);
+  setTimeout(() => { btn.textContent = 'Copier le rapport (souci)'; if (copied) box.classList.add('hidden'); }, 6000);
 };
+
+$('#issueGo').onclick = () => $('#diag').click();
+
+// ---------- Récap de fin de match ----------
+// Le créateur du salon ouvre « Fin du match · récap » ; en Vestiaire il donne le score final pour juger les pronos.
+const fmtPos = (kind, pos) => {
+  if (kind === 'real') return new Date(pos * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const h = Math.floor(pos / 3600), m = Math.floor(pos % 3600 / 60), sec = Math.floor(pos % 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+};
+const fmtDur = min => min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `${min} min`;
+$('#mRecap').onclick = () => {
+  const vest = theme === 'vestiaire';
+  $('#recapScore').classList.toggle('hidden', !vest); $('#recapAsk').textContent = vest ? 'Score final' : 'Fin de la séance';
+  $('#rGo').textContent = vest ? 'Récap' : 'Voir le récap';
+  $('#recapEdit').classList.remove('hidden'); if (vest) $('#rH').focus();
+};
+$('#rCancel').onclick = () => $('#recapEdit').classList.add('hidden');
+$('#rGo').onclick = () => {
+  let score = '';
+  if (theme === 'vestiaire') {
+    const h = $('#rH').value, a = $('#rA').value;
+    if (h === '' || a === '') { $(h === '' ? '#rH' : '#rA').focus(); return; }
+    score = `${Math.min(20, Math.max(0, parseInt(h, 10) || 0))}-${Math.min(20, Math.max(0, parseInt(a, 10) || 0))}`;
+  }
+  engine({ cmd: 'recap', score }); $('#recapEdit').classList.add('hidden');
+};
+for (const id of ['#rH', '#rA']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#rGo').click(); });
+let recapShown = null;
+function renderRecap() {
+  const r = st.recap, box = $('#recap');
+  if (!r) { box.classList.add('hidden'); recapShown = null; return; }
+  box.classList.remove('hidden');
+  if (recapShown === r.at) return; recapShown = r.at;
+  const vest = theme === 'vestiaire', esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const badge = { exact: '🎯 dans le mille', bon: '✓ bon vainqueur', rate: '✗' };
+  let h = `<div class="rc-head"><span class="kicker">${vest ? 'Récap du match' : 'Récap de la séance'}</span>${r.score ? `<span class="rc-score">${esc(r.score)}</span>` : ''}</div>`;
+  if (r.pronos.length) {
+    h += `<div class="kicker rc-sub">Pronos</div>`;
+    for (const p of r.pronos) h += `<div class="rc-line"><span>${esc(p.name)} <b>${esc(p.score)}</b></span><span class="muted">${p.res ? badge[p.res] : ''}</span></div>`;
+  }
+  if (r.buts.length) h += `<div class="rc-line"><span>${r.buts.length} BUUUT${r.buts.length > 1 ? 'S' : ''}</span><span class="muted">${r.buts.map(b => b.pos != null ? fmtPos(b.kind, b.pos) : '').filter(Boolean).join(' · ')}</span></div>`;
+  if (r.moments.length) {
+    h += `<div class="kicker rc-sub">Meilleurs moments</div>`;
+    for (const m of r.moments) h += `<div class="rc-line"><span>${fmtPos(m.kind, m.pos)}</span><span>${esc(m.emoji)} · ${m.n} réactions</span></div>`;
+  }
+  h += `<div class="small muted rc-sub">${r.reactions} réaction${r.reactions > 1 ? 's' : ''} · ${r.messages} message${r.messages > 1 ? 's' : ''} · ${fmtDur(r.duree)} ensemble</div>`;
+  h += `<button id="rClose" class="link small rc-close">Fermer</button>`;
+  box.innerHTML = h;
+  $('#rClose').onclick = () => engine({ cmd: 'recapClose' });
+}

@@ -19,10 +19,14 @@
     vids.sort((a, b) => area(b) - area(a) || (a.paused - b.paused) || len(b) - len(a));
     return vids[0] || null;
   }
+  // Journal du diagnostic automatique (gardé par le moteur ; rien n'est envoyé au serveur).
+  const tr = (k, d, bad) => { try { chrome.runtime.sendMessage({ cmd: 'trace', k, d: String(d ?? ''), bad: !!bad }).catch(() => {}); } catch {} };
   function attach(v) {
     if (!v || v === video) return;
     video = v;
     chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {});
+    tr('vidéo', `${location.hostname} ${v.clientWidth}×${v.clientHeight}${isFinite(v.duration) ? '' : ' direct'}`);
+    v.addEventListener('error', () => tr('erreur vidéo', `code ${v.error?.code || '?'} ${v.error?.message || ''}`.trim(), true));
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {
       if (Date.now() < ignoreUntil || !me || mode !== 'vod') return; // en direct, chacun garde son flux
       emit(ev === 'seeked' ? 'seek' : ev);
@@ -53,6 +57,9 @@
     } catch {}
     const epoch = t + (Number(v.dataset.cowatchEpoch) || 0); // cowatchEpoch : uniquement pour les tests
     if (ok(epoch * 1000)) return { pos: epoch, how: 'lecteur' };
+    // Canal+ compte en secondes depuis le 1er janvier 2015 (et non 1970) : constaté en vrai le 22/10.
+    const c2015 = t + 1420070400;
+    if (t > 1e8 && ok(c2015 * 1000)) return { pos: c2015, how: 'lecteur' };
     const ast = Number(v.getAttribute('data-cowatch-ast'));
     if (ast && ok(ast + t * 1000)) return { pos: ast / 1000 + t, how: 'dash' };
     return { pos: t, how: 'aucune' };
@@ -73,7 +80,7 @@
     if (!pendingJoin || Date.now() - pendingJoin.at > 30 * 60 * 1000) return;
     const b = document.createElement('button');
     b.textContent = `Rejoindre le salon ${pendingJoin.code}`;
-    b.style.cssText = 'position:fixed;right:20px;bottom:24px;z-index:2147483647;background:#F4F6FA;color:#060A1C;border:0;border-radius:999px;padding:12px 18px;font:700 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
+    b.style.cssText = 'position:fixed;right:20px;top:84px;z-index:2147483647;background:#F4F6FA;color:#060A1C;border:0;border-radius:999px;padding:12px 18px;font:700 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer';
     b.onclick = async () => { const r = await chrome.runtime.sendMessage({ cmd: 'openPanel' }).catch(() => null); if (r && r.ok) b.remove(); else b.textContent = 'Clique sur l\'icône Cowatch en haut à droite'; };
     document.documentElement.append(b);
   }).catch(() => {});
@@ -97,8 +104,11 @@
     const drift = video.currentTime - target;
     if (m.action === 'state' && Math.abs(drift) < DRIFT && video.paused === !m.playing) return;
     quiet();
-    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) seekTo(target);
-    if (m.playing && video.paused) { try { await video.play(); } catch { banner('Clique sur ▶ pour rejoindre la lecture'); } }
+    if (Math.abs(drift) > (m.action === 'state' ? DRIFT : 0.3)) {
+      seekTo(target); tr('synchro', `${m.action} de ${m.name || '?'} : écart ${drift.toFixed(2)} s`);
+      const v = video; setTimeout(() => { if (v === video && Math.abs(v.currentTime - (target + (m.playing ? 2 : 0))) > 2.5) tr('déplacement raté', `voulu ${target.toFixed(1)} s, obtenu ${v.currentTime.toFixed(1)} s`, true); }, 2000);
+    }
+    if (m.playing && video.paused) { try { await video.play(); } catch { banner('Clique sur ▶ pour rejoindre la lecture'); tr('lecture refusée', 'le site attend un clic'); } }
     if (!m.playing && !video.paused) video.pause();
   }
 
@@ -110,6 +120,7 @@
   //  - en retard (sec < 0) : on avance d'autant (le lecteur d'en face ne peut pas prendre plus de retard).
   function align(sec, auto) {
     if (!video || !sec) return;
+    tr('calage', `${sec > 0 ? 'avance' : 'retard'} ${Math.abs(sec).toFixed(2)} s${auto ? ' (auto)' : ''}`);
     clearTimeout(alignTimer); video.playbackRate = 1;
     if (sec < 0) {
       let to = video.currentTime - sec;
@@ -126,7 +137,7 @@
     quiet(sec * 1000 + 1500);
     video.pause();
     banner(auto ? `Calage avec le salon… (${sec.toFixed(1)} s)` : `Alignement : pause ${sec.toFixed(1)} s`);
-    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); } }, sec * 1000);
+    alignTimer = setTimeout(async () => { quiet(); try { await video.play(); banner('Calé ✓'); } catch { banner('Clique sur ▶ pour reprendre'); tr('reprise refusée', 'après la pause de calage', true); } }, sec * 1000);
   }
 
   // ---------- Calques Cowatch sur la vidéo ----------
@@ -283,11 +294,12 @@
     let g = groups.get(emoji);
     if (g && now - g.last < 1500 && g.el.isConnected) { // même émoji en même temps : une seule bulle qui grossit
       g.count++; g.last = now; if (!g.names.includes(name)) g.names.push(name);
+      if (g.count > 3) { rain(emoji); g.lab.textContent = g.names.length > 1 ? `${g.names[0]} +${g.names.length - 1} ×${g.count}` : `${name} ×${g.count}`; return; } // au-delà de 3 : pluie
     } else {
       if (box.childElementCount >= 14) box.firstElementChild.remove(); // avalanche : les plus anciennes laissent la place
       const el = document.createElement('div'); el.className = 'cw-rx';
-      const x = 56 + Math.random() * 36;
-      el.style.cssText = `position:absolute;left:${x}%;bottom:120px;display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform,opacity`;
+      const x = 54 + Math.random() * 26; // partie droite de l'image, sans toucher le bord ni la languette
+      el.style.cssText = `position:absolute;left:min(${x}%, calc(100% - 190px));bottom:120px;display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform,opacity`;
       const bub = document.createElement('div'); bub.className = 'cw-emoji'; bub.textContent = emoji;
       const lab = document.createElement('span'); lab.className = 'cw-who';
       lab.style.cssText = `background:${rgba(t.bg, .8)};color:${t.text};border-radius:99px;padding:2px 9px;font:700 12px ${t.body};white-space:nowrap`;
@@ -311,6 +323,25 @@
       ], { duration: 3000, easing: 'ease-out' });
     const anim = g.anim, el = g.el;
     anim.onfinish = () => { el.remove(); if (groups.get(emoji)?.el === el) groups.delete(emoji); };
+  }
+  // Pluie : quelques petits émojis tombent du haut de l'image, dispersés, puis s'effacent (40 au maximum à l'écran).
+  function rain(emoji) {
+    const box = layer('cowatch-rain', 'inset:0;overflow:hidden'); if (!box) return;
+    const n = 6 + Math.floor(Math.random() * 4);
+    // La pluie tombe dans l'image (pas au-dessus) : on prend le cadre de la vidéo quand on le connaît.
+    const r = video && video.isConnected ? video.getBoundingClientRect() : null, top = r && r.height > 100 ? Math.max(0, r.top) : 0, left = r && r.width > 100 ? Math.max(0, r.left) : 0, width = r && r.width > 100 ? Math.min(innerWidth, r.width) : innerWidth;
+    for (let i = 0; i < n; i++) {
+      if (box.childElementCount >= 60) box.firstElementChild.remove();
+      const d = document.createElement('span'); d.className = 'cw-drop'; d.textContent = emoji;
+      const size = 22 + Math.random() * 14, x = left + width * (.06 + Math.random() * .88);
+      d.style.cssText = `position:absolute;left:${x}px;top:${top - 30}px;font-size:${size}px;line-height:1;will-change:transform,opacity;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))`;
+      box.append(d);
+      const fall = (r && r.height > 100 ? r.height : innerHeight) * (.6 + Math.random() * .35), sway = (Math.random() - .5) * 80, delay = Math.random() * 600;
+      const a = calm()
+        ? d.animate([{ opacity: 0 }, { opacity: 1, offset: .2 }, { opacity: 0 }], { duration: 1600, delay })
+        : d.animate([{ transform: 'translate(0,0) rotate(0deg)', opacity: 0 }, { opacity: 1, offset: .12 }, { transform: `translate(${sway}px,${fall}px) rotate(${(Math.random() - .5) * 60}deg)`, opacity: 0 }], { duration: 2200 + Math.random() * 1200, delay, easing: 'cubic-bezier(.3,.6,.6,1)' });
+      a.onfinish = () => d.remove();
+    }
   }
   function onReaction(m) {
     const ms = waitFor(m);
@@ -354,25 +385,45 @@
   }
 
   // ---------- Vestiaire : prono du groupe en haut à gauche ----------
+  // Volet sur le bord gauche, à mi-hauteur (loin du score et du chrono, en haut de l'image) :
+  // replié, il montre le score le plus choisi ; au survol, il déroule le prono de chacun.
+  let pronoOpen = false;
   function renderProno() {
-    const box = layer('cowatch-prono', 'top:24px;left:24px'); if (!box) return;
-    if (theme !== 'vestiaire' || !inRoom || !pronos.length) { box.replaceChildren(); return; }
+    const box = layer('cowatch-prono', 'left:0;top:34%'); if (!box) return;
+    if (theme !== 'vestiaire' || !inRoom || !pronos.length) { box.replaceChildren(); box.style.display = 'none'; return; }
     loadFonts();
     const t = th(), tally = {}; for (const p of pronos) tally[p.score] = (tally[p.score] || 0) + 1;
     const [score, n] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-    box.style.cssText += `;background:${rgba(t.bg, .74)};border:1px solid ${rgba(t.muted, .22)};border-radius:12px;padding:10px 14px;color:${t.text};display:flex;flex-direction:column;gap:4px`;
-    const k = document.createElement('span'); k.textContent = 'Prono du groupe'; k.style.cssText = `font:700 11px ${t.display};letter-spacing:.2em;text-transform:uppercase;color:${t.muted}`;
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:baseline;gap:8px';
-    const sc = document.createElement('span'); sc.textContent = score; sc.style.cssText = `font:800 28px/1 ${t.display}`;
-    const sub = document.createElement('span'); sub.textContent = pronos.length === 1 ? `${pronos[0].name}` : n > 1 ? `${n} sur ${pronos.length}` : `${pronos.length} pronos`; sub.style.cssText = `font:12px ${t.body};color:${t.muted}`;
-    row.append(sc, sub); box.replaceChildren(k, row);
+    box.style.display = 'flex';
+    if (!box.dataset.wired) {
+      box.dataset.wired = '1';
+      box.addEventListener('mouseenter', () => { pronoOpen = true; renderProno(); });
+      box.addEventListener('mouseleave', () => { pronoOpen = false; renderProno(); });
+    }
+    box.style.pointerEvents = 'auto'; box.style.cursor = 'default';
+    box.style.flexDirection = 'column'; box.style.gap = '4px';
+    box.style.background = rgba(t.bg, .8); box.style.color = t.text; box.style.border = `1px solid ${rgba(t.muted, .22)}`; box.style.borderLeft = '0';
+    box.style.borderRadius = '0 12px 12px 0'; box.style.padding = pronoOpen ? '10px 14px' : '8px 10px 8px 9px'; box.style.boxShadow = '0 6px 20px rgba(0,0,0,.35)';
+    const k = document.createElement('span'); k.textContent = pronoOpen ? 'Prono du groupe' : 'Prono'; k.style.cssText = `font:700 10px ${t.display};letter-spacing:.18em;text-transform:uppercase;color:${t.muted}`;
+    const sc = document.createElement('span'); sc.textContent = score; sc.style.cssText = `font:800 ${pronoOpen ? 24 : 20}px/1 ${t.display}`;
+    const parts = [k, sc];
+    if (pronoOpen) {
+      const sub = document.createElement('span'); sub.textContent = n > 1 ? `${n} sur ${pronos.length}` : `${pronos.length} prono${pronos.length > 1 ? 's' : ''}`; sub.style.cssText = `font:12px ${t.body};color:${t.muted}`;
+      parts.push(sub);
+      for (const p of pronos) {
+        const row = document.createElement('div'); row.style.cssText = `display:flex;justify-content:space-between;gap:14px;font:600 13px ${t.body}`;
+        const nm = document.createElement('span'); nm.textContent = p.name; const v = document.createElement('b'); v.textContent = p.score; v.style.fontFamily = t.display;
+        row.append(nm, v); parts.push(row);
+      }
+    } else if (pronos.length > 1) { const sub = document.createElement('span'); sub.textContent = `×${pronos.length}`; sub.style.cssText = `font:11px ${t.body};color:${t.muted}`; parts.push(sub); }
+    box.replaceChildren(...parts);
   }
 
   // ---------- Barre d'émojis du plein écran : en bas au centre, visible quand on bouge la souris ----------
   let barTimer = null;
   function renderBar(show) {
     const box = layer('cowatch-bar', 'left:50%;bottom:110px;transform:translateX(-50%)'); if (!box) return;
-    if (!inRoom || !isFs()) { box.replaceChildren(); return; }
+    if (!inRoom || !(isFs() || !panelOpen)) { box.replaceChildren(); return; } // plein écran du site, ou panneau replié
     const t = th();
     if (box.dataset.theme !== theme || !box.childElementCount) {
       box.dataset.theme = theme; box.replaceChildren();
@@ -386,10 +437,30 @@
     }
     if (show) { box.style.opacity = '1'; box.style.pointerEvents = 'auto'; clearTimeout(barTimer); barTimer = setTimeout(() => { box.style.opacity = '0'; box.style.pointerEvents = 'none'; }, 3000); }
   }
-  document.addEventListener('mousemove', () => { if (inRoom && isFs() && isDisplayFrame()) { renderBar(true); renderReopen(true); } }, { passive: true });
+  document.addEventListener('mousemove', () => { if (inRoom && (isFs() || !panelOpen) && isDisplayFrame()) renderBar(true); }, { passive: true });
 
   // ---------- Languette « Cowatch » sur le bord droit : rouvre le panneau, visible aussi en plein écran ----------
   let inRoom = false, panelOpen = true, unread = 0, reopenEl = null, lastNudge = 0;
+  // Récap de fin de match sur la vidéo : carte au centre, 15 s (un clic la ferme). Le détail reste dans le panneau.
+  function showRecap(r) {
+    if (!r || Date.now() - r.at > 60000) return;
+    const box = layer('cowatch-recap', 'left:50%;top:16%;transform:translateX(-50%);pointer-events:auto;cursor:pointer'); if (!box) return;
+    const t = th(), vest = theme === 'vestiaire';
+    const fp = (k, p) => k === 'real' ? new Date(p * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `${Math.floor(p / 60)}'`;
+    box.style.cssText += `;min-width:280px;max-width:min(420px,80vw);background:${rgba(t.bg, .9)};color:${t.text};border:1px solid ${rgba(t.text, .18)};border-radius:16px;padding:16px 20px;font:500 14px ${t.body};box-shadow:0 18px 50px rgba(0,0,0,.5)`;
+    box.textContent = '';
+    const row = (a, b, big) => { const d = document.createElement('div'); d.style.cssText = `display:flex;justify-content:space-between;gap:16px;${big ? `font:800 30px ${t.display};letter-spacing:.04em;margin:2px 0 8px` : 'margin-top:4px'}`; const x = document.createElement('span'); x.textContent = a; const y = document.createElement('span'); y.textContent = b; d.append(x, y); box.append(d); };
+    const head = document.createElement('div'); head.textContent = vest ? 'RÉCAP DU MATCH' : 'RÉCAP DE LA SÉANCE'; head.style.cssText = `font:700 12px ${t.display};letter-spacing:.18em;opacity:.75`; box.append(head);
+    if (r.score) row('Score final', r.score, true);
+    const win = r.pronos.filter(p => p.res === 'exact'), good = r.pronos.filter(p => p.res === 'bon');
+    if (win.length) row('🎯 Dans le mille', win.map(p => p.name).join(', '));
+    if (good.length) row('✓ Bon vainqueur', good.map(p => p.name).join(', '));
+    if (r.score && r.pronos.length && !win.length && !good.length) row('Pronos', 'personne n\'a vu juste');
+    for (const m of r.moments) row(`Moment fort · ${fp(m.kind, m.pos)}`, `${m.emoji} · ${m.n} réactions`);
+    box.style.display = 'block'; box.style.opacity = '1';
+    box.onclick = e => { e.stopPropagation(); box.style.display = 'none'; };
+    clearTimeout(box._t); box._t = setTimeout(() => { box.style.display = 'none'; }, 15000);
+  }
   function renderReopen(nudge) {
     const show = inRoom && isDisplayFrame() && (isFs() || !panelOpen);
     if (!show) { reopenEl?.remove(); return; }
@@ -428,14 +499,15 @@
   setInterval(() => { if (inRoom && video && window.top === window || (inRoom && video && isDisplayFrame())) { const p = myPos(); if (p) chrome.runtime.sendMessage({ cmd: 'pos', ...p, playing: !video.paused }).catch(() => {}); } }, 1000);
 
   if (window.top !== window) chrome.runtime.sendMessage({ cmd: 'panelState' }).then(r => { if (r && typeof r.open === 'boolean') { panelOpen = r.open; renderReopen(); } }).catch(() => {});
-  chrome.runtime.onMessage.addListener(m => {
-    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); return; }
+  chrome.runtime.onMessage.addListener((m, _s, reply) => {
+    if (m.t === 'has-video') { if (video) reply(true); return; } // le panneau suit l'onglet où il y a une vidéo
+    if (m.t === 'panel') { panelOpen = !!m.open; if (panelOpen && !isFs()) unread = 0; renderReopen(); renderBar(!panelOpen); return; }
     if (m.t === 'roster') { roster = new Map(m.people.map(p => [p.id, p])); pronos = m.pronos || []; if (m.theme) setTheme(m.theme); renderMuted(); renderProno(); return; }
     if (m.t === 'speak') { showFace(m.id, m.on); return; }
     if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
-    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
+    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); loadFonts(); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
@@ -443,9 +515,10 @@
     else if (m.t === 'goal') onGoal(m);
     else if (m.t === 'goal-cancel') onGoalCancel(m);
     else if (m.t === 'theme') setTheme(m.theme);
+    else if (m.t === 'recap') showRecap(m);
     else if (m.t === 'chat') { showChat(m.name, m.text); if (!panelOpen || isFs()) { unread++; renderReopen('msg'); } }
     else if (m.t === 'mode') { mode = m.mode; banner(mode === 'live' ? 'Mode match : alignement sur le plus lent' : 'Mode série : lecture partagée'); }
     else if (m.t === 'align') align(m.pauseFor, m.auto);
-    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); renderProno(); renderBar(false); banner('Cowatch déconnecté'); }
+    else if (m.t === 'disconnected') { me = null; inRoom = false; renderReopen(); renderProno(); renderBar(false); if (!m.quiet) banner('Cowatch déconnecté'); }
   });
 })();

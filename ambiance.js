@@ -64,8 +64,11 @@ require('fs').mkdirSync(SHOTS, { recursive: true });
   // --- Prono d'avant-match ---
   await A.p.fill('#pH', '2'); await A.p.fill('#pA', '1'); await A.p.click('#pGo');
   await B.p.fill('#pH', '2'); await B.p.fill('#pA', '1'); await B.p.click('#pGo');
-  ok(await until(() => B.p.evaluate(() => document.querySelector('#pronoList').textContent.includes('2-1 (2 sur 2)'))), `prono du groupe dans le panneau (« ${await B.p.textContent('#pronoList')} »)`);
-  ok(await until(() => B.v.evaluate(() => (document.querySelector('#cowatch-prono')?.innerText || '').includes('2-1'))), 'prono du groupe affiché en haut à gauche de la vidéo');
+  ok(await until(() => B.p.evaluate(() => !document.querySelector('#pronoDone').classList.contains('hidden') && document.querySelector('#pronoMine').textContent === '2-1')), 'prono validé : le bloc se replie en une ligne « Ton prono 2-1 · modifier »');
+  ok(await until(() => B.v.evaluate(() => { const b = document.querySelector('#cowatch-prono'); if (!b) return false; const r = b.getBoundingClientRect(); return b.innerText.includes('2-1') && r.left <= 1 && r.top > innerHeight * .25; })), 'prono du groupe : petit volet sur le bord gauche, à mi-hauteur (loin du score et du chrono)');
+  await B.v.hover('#cowatch-prono');
+  ok(await until(() => B.v.evaluate(() => { const t = document.querySelector('#cowatch-prono').innerText; return t.includes('Lucas') && t.includes('Kilian'); })), 'au survol, le volet déroule le prono de chacun');
+  await B.v.mouse.move(600, 500);
 
   // --- Micro : pastille sur l'avatar, plus de message dans le chat ---
   const chat0 = await A.p.textContent('#chat');
@@ -116,10 +119,23 @@ require('fs').mkdirSync(SHOTS, { recursive: true });
   await B.v.click('#cowatch-reopen');
   ok(await until(() => B.v.evaluate(() => !document.fullscreenElement)), 'clic sur la languette en plein écran : on sort du plein écran pour ouvrir le panneau');
 
+  // --- Pluie d'émojis : au-delà de 3 clics rapides sur le même émoji ---
+  await B.p.evaluate(() => { const b = document.querySelectorAll('#react button')[1]; let i = 0; const t = setInterval(() => { b.click(); if (++i >= 7) clearInterval(t); }, 150); });
+  ok(await until(() => A.v.evaluate(() => document.querySelectorAll('#cowatch-rain .cw-drop').length >= 3)), `clics répétés : pluie d'émojis (${await A.v.evaluate(() => document.querySelectorAll('#cowatch-rain .cw-drop').length)} gouttes)`);
+  ok(await A.v.evaluate(() => [...document.querySelectorAll('#cowatch-react .cw-rx')].filter(e => e.textContent.includes('🔥')).length <= 1), 'pas une bulle qui grossit sans fin : une seule bulle (taille 3 max) + la pluie');
+  await A.v.screenshot({ path: `${SHOTS}/pluie.png` });
+
+  // --- Panneau replié (sans plein écran) : la vidéo prend la place, barre d'émojis et languette comme sur la maquette ---
+  await B.p.close();
+  await B.v.bringToFront(); await B.v.mouse.move(300, 300); await B.v.mouse.move(320, 330);
+  ok(await until(() => B.v.evaluate(() => { const b = document.querySelector('#cowatch-bar'); return !document.fullscreenElement && b && b.children.length === 6 && b.style.opacity === '1'; })), 'panneau replié : barre d\'émojis en bas au centre, même sans plein écran');
+  ok(await B.v.evaluate(() => !!document.querySelector('#cowatch-reopen')), 'panneau replié : languette pour le rouvrir');
+  await B.v.screenshot({ path: `${SHOTS}/replie.png` });
+
   // --- « Moins d'animations » : les réactions s'affichent sans mouvement ---
   await A.v.emulateMedia({ reducedMotion: 'reduce' });
-  await B.p.click('#react button >> nth=2');
-  ok(await until(() => A.v.evaluate(() => !!document.querySelector('#cowatch-react .cw-rx'))), 'moins d\'animations : la réaction s\'affiche quand même, sans mouvement');
+  await A.p.click('#react button >> nth=2');
+  ok(await until(() => A.v.evaluate(() => [...document.querySelectorAll('#cowatch-react .cw-rx')].some(e => e.textContent.includes('😤')))), 'moins d\'animations : la réaction s\'affiche quand même, sans mouvement');
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
   await cA.close(); await cB.close(); process.exit();
 })().catch(e => { console.error(e); process.exit(1); });

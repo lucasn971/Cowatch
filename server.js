@@ -135,7 +135,25 @@ const rooms = new Map();
 // Métadonnées par salon : mode 'vod' (série : lecture partagée) ou 'live' (match : alignement sur le plus lent).
 const meta = new Map(); // room -> {mode, calib:{id,label,tops:Map(name->serverTime)}}
 const stats = { roomsCreated: 0, joins: 0, reactions: 0, syncEvents: 0, calibrations: 0, alignments: 0, autoSyncs: 0 };
-const metaOf = room => { if (!meta.has(room)) meta.set(room, { mode: 'vod', calib: null, chat: [], theme: 'vestiaire', owner: '', pronos: new Map(), goal: null }); return meta.get(room); };
+const metaOf = room => { if (!meta.has(room)) meta.set(room, { mode: 'vod', calib: null, chat: [], theme: 'vestiaire', owner: '', pronos: new Map(), goal: null, moments: new Map(), goals: [], nReact: 0, nChat: 0, start: Date.now(), recap: null }); return meta.get(room); };
+// Récap de fin de match : les réactions sont comptées par minute de la vidéo (heure réelle de l'image en direct, temps de la vidéo sinon).
+function countMoment(md, emoji, at) {
+  md.nReact++;
+  if (at.pos == null) return;
+  const key = `${at.kind}:${Math.floor(at.pos / 60)}`;
+  let b = md.moments.get(key); if (!b) { if (md.moments.size >= 600) return; b = { kind: at.kind, pos: Math.floor(at.pos / 60) * 60, n: 0, emo: {} }; md.moments.set(key, b); }
+  b.n++; b.emo[emoji] = (b.emo[emoji] || 0) + 1;
+}
+const outcome = sc => { const [h, a] = sc.split('-').map(Number); return Math.sign(h - a); };
+function buildRecap(md, score) {
+  const pronos = [...md.pronos.entries()].map(([name, p]) => ({ name, score: p, res: !score ? null : p === score ? 'exact' : outcome(p) === outcome(score) ? 'bon' : 'rate' }));
+  const order = { exact: 0, bon: 1, rate: 2 }; pronos.sort((x, y) => (order[x.res] ?? 3) - (order[y.res] ?? 3));
+  const moments = [...md.moments.values()].filter(b => b.n >= 3).sort((x, y) => y.n - x.n).slice(0, 3)
+    .map(b => ({ kind: b.kind, pos: b.pos, n: b.n, emoji: Object.entries(b.emo).sort((x, y) => y[1] - x[1])[0][0] }))
+    .sort((x, y) => x.pos - y.pos);
+  return { t: 'recap', score: score || null, pronos, moments, buts: md.goals.filter(g => !g.cancelled).map(g => ({ by: g.by, ...g.where })),
+    reactions: md.nReact, messages: md.nChat, duree: Math.round((Date.now() - md.start) / 60000), at: Date.now() };
+}
 // Ambiances (voir themes.js) : choisie par celui qui crée le salon, la même pour tous, modifiable par lui seul.
 const THEMES = new Set(['vestiaire', 'salle', 'canape', 'live', 'arene']);
 const pronosOf = room => [...metaOf(room).pronos.entries()].map(([name, score]) => ({ name, score }));
@@ -253,6 +271,7 @@ function handle(conn) {
       const h = hostOf(room);
       conn.send({ t: 'welcome', id: me.id, name: me.name, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: md.mode,
         theme: md.theme, owner: !!cid && md.owner === cid, pronos: pronosOf(room) });
+      if (kind === 'salon' && md.recap) conn.send(md.recap);
       const cr = calibResult(room); if (cr && kind === 'salon') conn.send(cr);
       if (kind === 'salon' && metaOf(room).chat.length) conn.send({ t: 'chat-history', items: metaOf(room).chat });
       broadcast(room, { t: 'peer-joined', peer: pub(me) }, me.id);
@@ -298,17 +317,19 @@ function handle(conn) {
         // Vestiaire : le premier ⚽ déclenche le BUUUT. Un seul par but : les ⚽ des 20 s suivantes sont de simples réactions.
         if (md.theme === 'vestiaire' && emoji === '⚽' && (!md.goal || md.goal.cancelled || now - md.goal.at > 20000)) {
           md.goal = { id: crypto.randomBytes(3).toString('hex'), at: now, by: me.name };
+          md.goals.push(md.goal); md.goal.where = at; countMoment(md, emoji, at);
           stats.goals = (stats.goals || 0) + 1;
           broadcast(me.room, { t: 'goal', id: md.goal.id, by: me.name, from: me.id, ...at });
           break;
         }
+        countMoment(md, emoji, at);
         broadcast(me.room, { t: 'reaction', from: me.id, name: me.name, emoji, ...at });
         break;
       }
       case 'goal-cancel': { // VAR : but refusé (dans les 20 s)
         const md = metaOf(me.room);
         if (!md.goal || md.goal.id !== m.id || Date.now() - md.goal.at > 20000) break;
-        broadcast(me.room, { t: 'goal-cancel', id: md.goal.id, by: me.name }); md.goal = { ...md.goal, cancelled: true };
+        broadcast(me.room, { t: 'goal-cancel', id: md.goal.id, by: me.name }); md.goal.cancelled = true;
         break;
       }
       case 'theme': { // changement d'ambiance : seulement par celui qui a créé le salon
@@ -325,6 +346,17 @@ function handle(conn) {
         broadcast(me.room, { t: 'pronos', items: pronosOf(me.room) });
         break;
       }
+      case 'recap': { // fin du match : le créateur du salon (ou n'importe qui s'il est parti) donne le score final
+        if (me.kind !== 'salon') break;
+        const md = metaOf(me.room), r = rooms.get(me.room);
+        const ownerHere = [...(r?.values() || [])].some(c => c.kind === 'salon' && c.cid && c.cid === md.owner);
+        if (ownerHere && md.owner !== me.cid) break;
+        const score = String(m.score || '').trim();
+        if (score && !PRONO_RE.test(score)) break;
+        md.recap = buildRecap(md, score); stats.recaps = (stats.recaps || 0) + 1;
+        broadcast(me.room, md.recap);
+        break;
+      }
       case 'mute': { // micro coupé ou non : affiché en pastille sur l'avatar (plus de message dans le chat)
         if (me.kind !== 'salon') break;
         me.muted = !!m.muted; broadcast(me.room, { t: 'mute', id: me.id, muted: me.muted }, me.id);
@@ -338,7 +370,7 @@ function handle(conn) {
         const text = String(m.text || '').trim().slice(0, 500);
         if (!text) break;
         const msg = { t: 'chat', name: me.name, text, at: Date.now() };
-        const h = metaOf(me.room).chat; h.push(msg); if (h.length > CHAT_HISTORY) h.shift();
+        const h = metaOf(me.room).chat; h.push(msg); if (h.length > CHAT_HISTORY) h.shift(); metaOf(me.room).nChat++;
         stats.chats = (stats.chats || 0) + 1;
         broadcast(me.room, msg);
         break;
