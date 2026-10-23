@@ -31,7 +31,7 @@ const { live } = require('../testlive/livesrv.js');
     await v.goto(`${LIVE}/${DASH ? 'player-dash' : 'player'}.html?who=${who}&lat=${lat}` + (who === 'lucas' && SNAP ? '&max=9' : ''));
     await v.waitForFunction(() => window.__truth && window.__truth(), null, { timeout: 30000 });
     const p = await c.newPage(); p.on('pageerror', e => errs.push(who + ' ' + e.message));
-    await p.goto(`chrome-extension://${await extId(c)}/panel.html?tab=${await tabIdOf(c, 'who=' + who)}&server=${encodeURIComponent(BASE)}`);
+    await p.goto(`chrome-extension://${await extId(c)}/panel.html?tab=${await tabIdOf(c, 'who=' + who)}&follow=1&server=${encodeURIComponent(BASE)}`);
     await v.bringToFront(); await sleep(800); return { v, p };
   };
   // Heure réelle vue par Cowatch (même calcul que player.js) et vérité terrain, sur la même image.
@@ -53,11 +53,15 @@ const { live } = require('../testlive/livesrv.js');
   const gap0 = (await measure(A.v)).truth - (await measure(B.v)).truth;
   ok(gap0 > 6000, `avant calage : Lucas a ${(gap0 / 1000).toFixed(1)} s d'avance sur Kilian`);
 
+  // Comme Lucas le 23/10 : il crée le salon depuis un autre onglet vidéo (série), puis passe sur le direct.
+  let other = null;
+  if (!SNAP && !DASH) { other = await cA.newPage(); await other.goto(`${BASE}/test-player.html?who=autre`); await other.waitForFunction(() => document.querySelector('video').readyState >= 1); await other.bringToFront(); await sleep(1500); }
   // Salon : Lucas crée, Kilian rejoint ; le calage doit se faire tout seul.
   await A.p.fill('#name', 'Lucas'); await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
   const code = await A.p.textContent('#code');
   await B.p.fill('#name', 'Kilian'); await B.p.fill('#codeIn', code); await B.p.click('#joinBtn');
   await B.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
+  if (!SNAP && !DASH) { await sleep(2000); await A.v.bringToFront(); }
   const t0 = Date.now(); let gap = gap0;
   while (Date.now() - t0 < (SNAP ? 70000 : 25000)) { await sleep(1000); gap = (await measure(A.v)).truth - (await measure(B.v)).truth; if (Math.abs(gap) < 300 && Date.now() - t0 > (SNAP ? 30000 : 3000)) break; }
   ok(Math.abs(gap) < 300, `après calage automatique : écart ${Math.round(gap)} ms (en ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
@@ -67,6 +71,21 @@ const { live } = require('../testlive/livesrv.js');
   ok(!(await A.v.evaluate(() => document.querySelector('video').paused)) && !(await B.v.evaluate(() => document.querySelector('video').paused)), 'les deux vidéos tournent');
   const st = await B.p.textContent('#autoState');
   ok(/Calé automatiquement/.test(st), `panneau de Kilian : « ${st} »`);
+  if (!SNAP && !DASH) {
+    // Essai réel du 23/10 (TF1 direct, aucun calage) : le panneau qui se rouvre, ou qui suit un autre onglet, renvoyait
+    // à la page un « bienvenue » resté en mode série : la page arrêtait d'envoyer son heure et plus rien ne se calait.
+    // Lucas passe sur un autre onglet vidéo (le salon le suit), puis revient sur le direct, puis rouvre son panneau.
+    await other.bringToFront(); await sleep(2500);
+    await A.v.bringToFront(); await sleep(2500);
+    await A.p.reload(); await A.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 }); await sleep(1500);
+    await A.v.evaluate(() => { const v = document.querySelector('video'), sk = v.seekable; v.currentTime = sk.end(sk.length - 1) - 3; }); // Lucas revient au direct
+    await sleep(2500);
+    const g3 = (await measure(A.v)).truth - (await measure(B.v)).truth;
+    ok(g3 > 4000, `Lucas a changé d'onglet, rouvert son panneau et est revenu au direct : ${(g3 / 1000).toFixed(1)} s d'avance`);
+    const t1 = Date.now(); let g4 = g3;
+    while (Date.now() - t1 < 30000) { await sleep(1000); g4 = (await measure(A.v)).truth - (await measure(B.v)).truth; if (Math.abs(g4) < 300) break; }
+    ok(Math.abs(g4) < 300, `panneau rouvert : le calage repart tout seul (écart ${Math.round(g4)} ms en ${((Date.now() - t1) / 1000).toFixed(0)} s)`);
+  }
   ok(errs.length === 0, 'aucune erreur JS ' + errs.join(' | '));
   if (SNAP) { const s = await (await fetch(BASE + '/stats')).json(); ok(s.totals.noBack >= 1, `le serveur a repéré le lecteur qui revient au direct (${s.totals.noBack || 0})`); }
   await cA.close(); await cB.close(); live.close(); process.exit();

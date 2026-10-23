@@ -56,6 +56,9 @@
       moi: S.me?.name || null, video: S.video, direct: S.live, heureReelle: !S.noAutoClock, micro: localStream ? (S.muted ? 'coupé' : 'ouvert') : (S.micErr || 'aucun'),
       connexions: { salon: wsS?.readyState === 1 ? 'ok' : 'coupée', lecteur: wsP?.readyState === 1 ? 'ok' : 'coupée', reessais: retryS + retryP },
       voix: [...peers.values()].filter(p => p.kind === 'salon' && p.id !== S.me?.id).map(p => `${p.name} : ${p.state || '?'}${p.audio?.srcObject ? ' (son reçu)' : ''}`),
+      // Qui a l'extension sur une vidéo (un « lecteur » dans le salon) : sans lui, pas de calage possible.
+      lecteurs: [...peers.values()].filter(p => p.kind === 'player').map(p => p.name),
+      calage: S.autosync ? JSON.stringify(S.autosync).slice(0, 200) : null,
       souci: S.issue ? `${S.issue.k} — ${S.issue.d}` : null,
       journal: J.slice(-120).map(([t, k, d]) => `${hm(t)} ${k}${d ? ' : ' + d : ''}`) };
   }
@@ -66,6 +69,10 @@
     if (OFFSCREEN) chrome.runtime.sendMessage({ to: 'bg', cmd: 'relay', tabId: S.tabId, m }).catch(() => {});
     else chrome.tabs.sendMessage(S.tabId, m).catch(() => {});
   }
+  // « Bienvenue » renvoyé à la page (panneau rouvert, page rechargée, salon qui suit un autre onglet) : toujours avec le mode
+  // et l'ambiance ACTUELS. Avant, il gardait le mode du moment de l'entrée (« série ») : la page arrêtait d'envoyer l'heure
+  // de son image et le calage du direct ne se faisait plus (essai TF1 du 23/10).
+  const welcomeNow = () => lastWelcome && { ...lastWelcome, mode: S.mode, theme: S.theme };
   function pushRoster() {
     if (!S.me?.id) return;
     const people = [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.id === S.me.id ? myAvatar : p.avatar || null, self: p.id === S.me.id, muted: p.id === S.me.id ? S.muted : !!p.muted }));
@@ -85,7 +92,7 @@
         if (S.code) toTab({ t: 'disconnected', quiet: true });
         trace('onglet', 'le salon suit un autre onglet');
         S.tabId = m.tabId; S.video = false; S.title = '';
-        if (S.code && lastWelcome) { toTab(lastWelcome); pushRoster(); }
+        if (S.code && lastWelcome) { toTab(welcomeNow()); pushRoster(); }
         toTab({ t: 'ping-video' }); snap(); return;
       case 'chat': { // si la connexion est coupée, le message part dès le retour
         const v = String(m.text || '').trim(); if (!v || !S.code) break;
@@ -113,9 +120,9 @@
     if (m.cmd === 'clock') {
       sendP({ t: 'clock', pos: m.pos, paused: m.paused });
       // Le calage automatique a besoin de l'heure réelle de l'image (Canal+ la donne, TF1 non).
-      const no = !(Number(m.pos) > 1e8); if (no !== S.noAutoClock) { S.noAutoClock = no; snap(); }
+      const no = !(Number(m.pos) > 1e8); if (no !== S.noAutoClock) { S.noAutoClock = no; trace('heure réelle de l\'image', no ? 'introuvable (calage manuel)' : 'trouvée'); snap(); }
     }
-    if (m.cmd === 'hello' && lastWelcome) { toTab(lastWelcome); pushRoster(); }
+    if (m.cmd === 'hello' && lastWelcome) { toTab(welcomeNow()); pushRoster(); }
     if (m.cmd === 'video') { if (S.video !== !!m.found) trace('vidéo', m.found ? 'détectée' : 'perdue', !m.found && !!S.code); S.video = !!m.found; snap(); }
     if (m.cmd === 'trace') trace(m.k, m.d, m.bad);
     if (m.cmd === 'pos') lastPos = { pos: +m.pos, kind: m.kind, playing: !!m.playing, at: Date.now() };
@@ -230,7 +237,7 @@
         for (const p of m.peers) if (p.kind === 'salon' && peers.has(p.id)) await call(p.id);
         return;
       }
-      if (m.t === 'peer-joined') {
+      if (m.t === 'peer-joined') { trace('arrivée', `${m.peer?.name} (${m.peer?.kind === 'player' ? 'sa vidéo' : 'son panneau'})`);
         peers.set(m.peer.id, { ...m.peer });
         if (m.peer.kind === 'salon') {
           const t = goneTimers.get(m.peer.name); // parti puis revenu en quelques secondes : on ne dit rien
@@ -253,7 +260,7 @@
       if (m.t === 'chat') addMsg(m);
       if (m.t === 'chat-history') m.items.forEach(addMsg);
       // Réactions : seulement en surimpression sur la vidéo (pas dans le chat, sinon elles noient les messages).
-      if (m.t === 'mode') { S.mode = m.mode === 'live' ? 'live' : 'vod'; sys(S.mode === 'live' ? 'Match en direct : calage automatique activé.' : 'Série / replay : lecture partagée.'); snap(); }
+      if (m.t === 'mode') { S.mode = m.mode === 'live' ? 'live' : 'vod'; if (lastWelcome) lastWelcome.mode = S.mode; sys(S.mode === 'live' ? 'Match en direct : calage automatique activé.' : 'Série / replay : lecture partagée.'); snap(); }
       if (m.t === 'calib-start') { S.calib = { id: m.id, label: m.label, myTop: false, items: [], msg: `Appuie quand tu vois : ${m.label}` }; snap(); }
       if (m.t === 'calib-result') { if (!S.calib || S.calib.id !== m.id) S.calib = { id: m.id, label: m.label, myTop: true, items: [], msg: '' }; S.calib.items = m.items; snap(); }
       if (m.t === 'align' && m.name === S.me.name) {
@@ -279,7 +286,7 @@
     ws.onmessage = ev => {
       if (ws !== wsP) return;
       const m = JSON.parse(ev.data);
-      if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(lastWelcome); pushRoster(); }
+      if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(welcomeNow()); pushRoster(); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
       else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme', 'recap'].includes(m.t)) toTab(m);
     };
