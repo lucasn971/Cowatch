@@ -55,6 +55,7 @@
     // Filet de sécurité : si le site met quand même en pause juste après un clic sur Cowatch, on relance aussitôt.
     v.addEventListener('pause', () => { if (Date.now() - uiTouchAt < 1500 && Date.now() >= ignoreUntil && v === video) { quiet(); v.play().catch(() => {}); tr('pause évitée', 'clic sur Cowatch'); } });
     chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {});
+    chrome.runtime.sendMessage({ cmd: 'site', host: location.hostname }).catch(() => {});
     tr('vidéo', `${location.hostname} ${v.clientWidth}×${v.clientHeight}${isFinite(v.duration) ? '' : ' direct'}`);
     v.addEventListener('error', () => tr('erreur vidéo', `code ${v.error?.code || '?'} ${v.error?.message || ''}`.trim(), true));
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {

@@ -22,6 +22,7 @@
   <button role="menuitem" id="mCalib">Calage manuel (TV)</button>
   <button role="menuitem" id="photoBtn">Ajouter ma photo</button>
   <button role="menuitem" id="photoDel" class="hidden">Retirer ma photo</button>
+  <button role="menuitem" id="mConsent">Statistiques anonymes : oui</button>
   <button role="menuitem" id="diag">Copier le rapport (souci)</button>
   <button role="menuitem" id="leave">Quitter le salon</button>
 </div>
@@ -36,6 +37,11 @@
   <label for="codeIn">Ou colle le lien d'invitation reçu</label>
   <div class="row"><input id="codeIn" maxlength="400" placeholder="Lien d'invitation"><button class="ghost" id="joinBtn">Rejoindre</button></div>
   <div id="err" class="small err" role="alert"></div>
+  <!-- Phase de test : accord pour les statistiques anonymes (demandé une fois) -->
+  <div id="consentBox" class="block consent hidden">
+    <div class="small"><b>Version de test</b> — pour améliorer Cowatch, des statistiques anonymes partent après chaque séance : durée, site regardé, calage, soucis techniques. Jamais tes messages, ta voix ni ton pseudo.</div>
+    <div class="row"><button id="consentYes" class="ghost small">D'accord</button><button id="consentNo" class="link small">Non merci</button></div>
+  </div>
 </section>
 
 <!-- Ce soir, quelle ambiance ? -->

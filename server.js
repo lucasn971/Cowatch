@@ -6,6 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const STATS = require('./stats.js'); // statistiques anonymes de séance, envoyées aux data analysts (phase de test)
 
 const PORT = process.env.PORT || 8080;
 // Pages web : dans ../web (dépôt structuré) ou à côté de server.js (fichiers envoyés en vrac sur GitHub).
@@ -13,6 +14,7 @@ const STRUCTURED = fs.existsSync(path.join(__dirname, '..', 'web', 'index.html')
 const WEB_DIR = STRUCTURED ? path.join(__dirname, '..', 'web') : __dirname;
 // En mode "vrac", on ne sert QUE les fichiers publics (pas le code du serveur ni de l'extension).
 const PUBLIC_FILES = new Set(['/index.html', '/join.html', '/test-player.html', '/test.webm', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/installer.html', '/cowatch.zip']);
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.webm': 'video/webm', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.zip': 'application/zip' };
 
 // ---------- HTTP statique ----------
@@ -28,7 +30,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/stats') { // compteur minimal pour le test (aucune donnée perso)
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ rooms: rooms.size, clients: [...rooms.values()].reduce((n, r) => n + r.size, 0), totals: stats }));
+    res.end(JSON.stringify({ rooms: rooms.size, clients: [...rooms.values()].reduce((n, r) => n + r.size, 0), totals: stats, statsSeances: STATS.enabled() }));
     return;
   }
   let p = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -212,7 +214,7 @@ function autoSync(room) {
   md.syncAgain = null; md.syncWho = null;
   if (reason === 'drift') { // garde-fou : si ça ne tient vraiment pas, on ne boucle pas
     md.drifts = (md.drifts || []).filter(t => now - t < 120000); md.drifts.push(now);
-    if (md.drifts.length > 4) { if (!md.stuckSent) { md.stuckSent = true; broadcast(room, { t: 'autosync-stuck' }, null, 'salon'); } return; }
+    if (md.drifts.length > 4) { if (!md.stuckSent) { md.stuckSent = true; broadcast(room, { t: 'autosync-stuck' }, null, 'salon'); STATS.count(room, 'calagesBloques'); } return; }
   }
   let hold = 0;
   for (const it of items) if (Math.abs(it.ahead) > 0.3) {
@@ -224,6 +226,7 @@ function autoSync(room) {
   }
   md.syncUntil = now + hold; md.syncEnd = md.syncUntil;
   stats.autoSyncs++;
+  STATS.calage(room, reason, spread, items, n => peersOf(room).find(c => c.name === n)?.anon);
   broadcast(room, { t: 'autosync', reason, who, items, spread: +spread.toFixed(2) }, null, 'salon');
 }
 setInterval(() => { for (const room of rooms.keys()) autoSync(room); }, 3000).unref?.();
@@ -240,6 +243,7 @@ function handle(conn) {
     r.delete(me.id);
     broadcast(me.room, { t: 'peer-left', id: me.id });
     if (me.kind === 'player') { const h = hostOf(me.room); if (h) broadcast(me.room, { t: 'host', id: h.id }, null, 'player'); }
+    STATS.onLeave(me.room, me, r.size === 0);
     if (r.size === 0) { rooms.delete(me.room); meta.delete(me.room); }
   };
   conn.onmessage = raw => {
@@ -253,8 +257,9 @@ function handle(conn) {
       // Même navigateur qui se reconnecte (double clic, coupure réseau) : on remplace l'ancienne connexion
       // au lieu d'ajouter un « Lucas 2 » fantôme qui reçoit et renvoie tout en double.
       const cid = typeof m.cid === 'string' ? m.cid.slice(0, 64) : '';
+      let wasReplaced = false;
       if (cid) for (const old of [...r.values()]) if (old.cid === cid && old.kind === kind) {
-        old.replaced = true; r.delete(old.id); broadcast(room, { t: 'peer-left', id: old.id }); old.conn.close();
+        wasReplaced = true; old.replaced = true; r.delete(old.id); broadcast(room, { t: 'peer-left', id: old.id }); old.conn.close();
         stats.replaced = (stats.replaced || 0) + 1; if (kind === 'player') m.swapped = true;
       }
       if (kind === 'salon' && [...r.values()].filter(c => c.kind === 'salon').length >= ROOM_MAX)
@@ -269,6 +274,7 @@ function handle(conn) {
       // Le premier arrivé (côté salon) est le créateur : il fixe l'ambiance et pourra la changer.
       if (kind === 'salon' && !md.owner && ![...r.values()].some(c => c.kind === 'salon')) { md.owner = cid || 'x'; if (THEMES.has(m.theme)) md.theme = m.theme; }
       r.set(me.id, me); stats.joins++;
+      STATS.onJoin(room, me, { replaced: wasReplaced, theme: md.theme, mode: md.mode, salons: [...r.values()].filter(c => c.kind === 'salon').length, players: [...r.values()].filter(c => c.kind === 'player').length });
       const h = hostOf(room);
       conn.send({ t: 'welcome', id: me.id, name: me.name, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: md.mode,
         theme: md.theme, owner: !!cid && md.owner === cid, pronos: pronosOf(room) });
@@ -319,31 +325,31 @@ function handle(conn) {
         if (md.theme === 'vestiaire' && emoji === '⚽' && (!md.goal || md.goal.cancelled || now - md.goal.at > 20000)) {
           md.goal = { id: crypto.randomBytes(3).toString('hex'), at: now, by: me.name };
           md.goals.push(md.goal); md.goal.where = at; countMoment(md, emoji, at);
-          stats.goals = (stats.goals || 0) + 1;
+          stats.goals = (stats.goals || 0) + 1; STATS.count(me.room, 'buts'); STATS.count(me.room, 'reactions');
           broadcast(me.room, { t: 'goal', id: md.goal.id, by: me.name, from: me.id, ...at });
           break;
         }
-        countMoment(md, emoji, at);
+        countMoment(md, emoji, at); STATS.count(me.room, 'reactions');
         broadcast(me.room, { t: 'reaction', from: me.id, name: me.name, emoji, ...at });
         break;
       }
       case 'goal-cancel': { // VAR : but refusé (dans les 20 s)
         const md = metaOf(me.room);
         if (!md.goal || md.goal.id !== m.id || Date.now() - md.goal.at > 20000) break;
-        broadcast(me.room, { t: 'goal-cancel', id: md.goal.id, by: me.name }); md.goal.cancelled = true;
+        broadcast(me.room, { t: 'goal-cancel', id: md.goal.id, by: me.name }); md.goal.cancelled = true; STATS.count(me.room, 'var');
         break;
       }
       case 'theme': { // changement d'ambiance : seulement par celui qui a créé le salon
         const md = metaOf(me.room);
         if (me.kind !== 'salon' || !me.cid || md.owner !== me.cid || !THEMES.has(m.theme)) break;
-        md.theme = m.theme; broadcast(me.room, { t: 'theme', theme: md.theme, by: me.name });
+        md.theme = m.theme; broadcast(me.room, { t: 'theme', theme: md.theme, by: me.name }); STATS.theme(me.room, md.theme);
         break;
       }
       case 'prono': { // prono d'avant-match (Vestiaire) : « 2-1 »
         if (me.kind !== 'salon') break;
         const md = metaOf(me.room), score = String(m.score || '').trim();
         if (score && !PRONO_RE.test(score)) break;
-        if (score) md.pronos.set(me.name, score); else md.pronos.delete(me.name);
+        if (score) { md.pronos.set(me.name, score); STATS.count(me.room, 'pronos'); } else md.pronos.delete(me.name);
         broadcast(me.room, { t: 'pronos', items: pronosOf(me.room) });
         break;
       }
@@ -354,10 +360,13 @@ function handle(conn) {
         if (ownerHere && md.owner !== me.cid) break;
         const score = String(m.score || '').trim();
         if (score && !PRONO_RE.test(score)) break;
-        md.recap = buildRecap(md, score); stats.recaps = (stats.recaps || 0) + 1;
+        md.recap = buildRecap(md, score); stats.recaps = (stats.recaps || 0) + 1; STATS.count(me.room, 'recaps');
         broadcast(me.room, md.recap);
         break;
       }
+      case 'telemetry': // rapport anonyme de l'extension (site, version, soucis) — gardé seulement s'il a donné son accord
+        if (me.kind === 'salon') STATS.client(me.room, me, m);
+        break;
       case 'mute': { // micro coupé ou non : affiché en pastille sur l'avatar (plus de message dans le chat)
         if (me.kind !== 'salon') break;
         me.muted = !!m.muted; broadcast(me.room, { t: 'mute', id: me.id, muted: me.muted }, me.id);
@@ -372,13 +381,14 @@ function handle(conn) {
         if (!text) break;
         const msg = { t: 'chat', name: me.name, text, at: Date.now() };
         const h = metaOf(me.room).chat; h.push(msg); if (h.length > CHAT_HISTORY) h.shift(); metaOf(me.room).nChat++;
-        stats.chats = (stats.chats || 0) + 1;
+        stats.chats = (stats.chats || 0) + 1; STATS.count(me.room, 'messages');
         broadcast(me.room, msg);
         break;
       }
       case 'mode': { // bascule série <-> match, pour tout le salon
         const mode = m.mode === 'live' ? 'live' : 'vod';
         const md0 = metaOf(me.room); if (md0.mode !== mode && mode === 'live') { md0.syncAgain = 'arrival'; md0.syncWho = me.name; }
+        if (md0.mode !== mode) STATS.mode(me.room, mode);
         md0.mode = mode;
         broadcast(me.room, { t: 'mode', mode, by: me.name });
         break;
@@ -415,3 +425,10 @@ function handle(conn) {
 }
 
 server.listen(PORT, () => console.log(`Salon server on http://localhost:${PORT}`));
+
+// Mise à jour du serveur (Render l'arrête avec SIGTERM) : les séances en cours partent avant l'arrêt.
+let stopping = false;
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
+  if (stopping) return; stopping = true;
+  Promise.race([STATS.flushAll(), new Promise(r => setTimeout(r, 4000))]).finally(() => process.exit(0));
+});

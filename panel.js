@@ -8,7 +8,7 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
 let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
-let pronoEditing = false;
+let pronoEditing = false, consent = null; // consent : accord pour les statistiques anonymes (null = pas encore demandé)
 let theme = T.DEFAULT, picked = T.DEFAULT, choiceFor = 'create', calibOpen = false, lastLog = null, tabTitle = '', titleAt = 0;
 
 // ---------- Ambiance : variables CSS, polices, textes, émojis ----------
@@ -48,7 +48,8 @@ async function startEngine() {
 
 // ---------- Démarrage ----------
 (async () => {
-  const saved = await chrome.storage.local.get(['name', 'server', 'avatar', 'theme']);
+  const saved = await chrome.storage.local.get(['name', 'server', 'avatar', 'theme', 'consent']);
+  consent = typeof saved.consent === 'boolean' ? saved.consent : null; renderConsent();
   if (saved.server) server = saved.server;
   if (params.get('server')) server = params.get('server');
   fetch(server.replace(/\/$/, '') + '/health').catch(() => {}); // réveille le serveur gratuit pendant qu'on tape son pseudo
@@ -60,7 +61,8 @@ async function startEngine() {
     if (m.to === 'ui') ui(m);
     if (sender.tab && sender.tab.id === tabId && m.cmd === 'diag') diagParts.push(m.data);
     // Une vidéo vient d'apparaître dans l'onglet affiché (page encore en chargement quand on y est allé) : le salon la prend.
-    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.active && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin)) considerTab(sender.tab.id);
+    // Aussi quand l'onglet suivi n'a pas de vidéo (panneau ouvert sur « Extensions », par exemple) : la vidéo d'un autre onglet de la fenêtre est prise.
+    if (m.cmd === 'video' && m.found && sender.tab && sender.tab.id !== tabId && followOn && (myWin == null || sender.tab.windowId === myWin) && (sender.tab.active || !(st && st.video))) considerTab(sender.tab.id);
   });
   if (tabId != null) watchPanelFor(tabId);
   // Rappel régulier à la page vidéo que le panneau est ouvert (l'arrière-plan de Chrome peut s'endormir et oublier) : pas de languette en double.
@@ -103,6 +105,13 @@ async function followTabs() {
     chrome.tabs.sendMessage(id, { t: 'ping-video' }).catch(() => {}); render();
   };
   chrome.tabs.onActivated.addListener(i => { if (myWin == null || i.windowId === myWin) consider(i.tabId); });
+  // En salon sans vidéo sur l'onglet suivi : on cherche toutes les 3 s une vidéo dans les autres onglets de la fenêtre.
+  setInterval(async () => {
+    if (!(st && st.inRoom) || st.video) return;
+    const tabs = await chrome.tabs.query(myWin == null ? { currentWindow: true } : { windowId: myWin }).catch(() => []);
+    tabs.sort((a, b) => (b.active - a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    for (const t of tabs) { if (t.id === tabId || !/^https?:/.test(t.url || '')) continue; if (await chrome.tabs.sendMessage(t.id, { t: 'has-video' }).catch(() => null)) { consider(t.id); return; } }
+  }, 3000);
   chrome.tabs.onUpdated.addListener((id, ch, tab) => { if (ch.status === 'complete' && tab.active && (myWin == null || tab.windowId === myWin)) { if (id === tabId) { titleAt = 0; render(); } else consider(id); } });
 }
 
@@ -172,7 +181,7 @@ function join(code, from, pre) {
   (async () => {
     await chrome.storage.local.set({ name });
     await startEngine();
-    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
+    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, consent: consent === true, version: chrome.runtime.getManifest().version, theme: from === 'create' ? picked : undefined });
   })();
   return true;
 }
@@ -481,3 +490,13 @@ function renderRecap() {
   box.innerHTML = h;
   $('#rClose').onclick = () => engine({ cmd: 'recapClose' });
 }
+
+// ---------- Statistiques anonymes (phase de test) : accord demandé une fois, modifiable dans le menu ----------
+function renderConsent() {
+  $('#consentBox').classList.toggle('hidden', consent !== null);
+  $('#mConsent').textContent = `Statistiques anonymes : ${consent ? 'oui' : 'non'}`;
+}
+async function setConsent(v) { consent = v; await chrome.storage.local.set({ consent: v }); renderConsent(); engine({ cmd: 'consent', consent: v }); }
+$('#consentYes').onclick = () => setConsent(true);
+$('#consentNo').onclick = () => setConsent(false);
+$('#mConsent').onclick = () => setConsent(!consent);

@@ -124,3 +124,6 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 .recap .rc-line b { font-family: var(--cw-display); letter-spacing: .03em }
 .recap .rc-sub { margin-top: 4px }
 .recap .rc-close { align-self: flex-end }
+
+/* Accord statistiques (phase de test) */
+.consent { margin-top: 14px } .consent .row { justify-content: flex-start }
