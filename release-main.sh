@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 [ -n "$1" ] || { echo "message de commit manquant"; exit 1; }
 git checkout -q prochaine-version
 ./make-zip.sh
+git add cowatch.zip && { git diff --cached --quiet || git commit -qm "cowatch.zip à jour"; }
 git diff --quiet || { echo "modifications non enregistrées sur prochaine-version"; exit 1; }
 git checkout -q main && git pull -q --ff-only origin main 2>/dev/null || true
 git checkout prochaine-version -- .
