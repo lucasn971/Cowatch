@@ -12,6 +12,7 @@
  */
 const ANALYSTES = 'prenom.nom@exemple.fr';      // ← à remplacer : qui reçoit les statistiques
 const CLE = 'cowatch-stats-2026';                // doit être la même que TELEMETRY_KEY sur le serveur (valeur par défaut)
+const LIBELLE = 'Data Cowatch';                  // libellé Gmail où sont rangés tous les e-mails de statistiques (hors boîte de réception)
 
 function doPost(e) {
   let d;
@@ -40,7 +41,18 @@ function envoyer(d) {
     'Fichiers joints : la séance (1 ligne), les participants (1 ligne chacun, anonymes), les événements (1 ligne par événement).',
     'Aucun message, aucune voix, aucun pseudo : chaque participant est un identifiant au hasard.',
   ].join('\n');
-  MailApp.sendEmail({ to: ANALYSTES, subject: 'Cowatch — séance du ' + jour + ' (' + minutes + ' min, ' + s.participants + ' pers.)', body: texte, attachments: fichiers });
+  GmailApp.sendEmail(ANALYSTES, 'Cowatch — séance du ' + jour + ' (' + minutes + ' min, ' + s.participants + ' pers.)', texte, { attachments: fichiers, name: 'Cowatch Data' });
+  ranger();
+}
+
+// Range les e-mails de statistiques (envoyés, et reçus si tu es aussi destinataire) dans « Data Cowatch », hors de la boîte de réception.
+function ranger() {
+  Utilities.sleep(3000); // le temps que Gmail enregistre l'envoi
+  const lib = GmailApp.getUserLabelByName(LIBELLE) || GmailApp.createLabel(LIBELLE);
+  const fils = GmailApp.search('subject:"Cowatch — séance du" -label:"' + LIBELLE + '" newer_than:2d', 0, 50);
+  if (!fils.length) return;
+  lib.addToThreads(fils);
+  GmailApp.moveThreadsToArchive(fils);
 }
 
 // Tableau d'objets -> fichier CSV (séparateur « ; » pour Excel en français, UTF-8 avec BOM).
