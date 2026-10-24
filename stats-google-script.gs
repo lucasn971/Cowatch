@@ -10,7 +10,7 @@
  *  4. Donner cette adresse à Claude (ou la mettre dans Render : variable TELEMETRY_URL).
  * Test : dans l'éditeur, choisir la fonction « testEnvoi » puis « Exécuter » : un e-mail d'exemple arrive.
  */
-const ANALYSTES = 'prenom.nom@exemple.fr';      // ← à remplacer : qui reçoit les statistiques
+const ANALYSTES = 'lucasnourypro@gmail.com';    // ta propre adresse : la conversation « Data analyst » du projet Claude lit le libellé « Data Cowatch »
 const CLE = 'cowatch-stats-2026';                // doit être la même que TELEMETRY_KEY sur le serveur (valeur par défaut)
 const LIBELLE = 'Data Cowatch';                  // libellé Gmail où sont rangés tous les e-mails de statistiques (hors boîte de réception)
 
@@ -40,6 +40,9 @@ function envoyer(d) {
     '',
     'Fichiers joints : la séance (1 ligne), les participants (1 ligne chacun, anonymes), les événements (1 ligne par événement).',
     'Aucun message, aucune voix, aucun pseudo : chaque participant est un identifiant au hasard.',
+    '',
+    // Les mêmes données en texte, pour qu'une analyse puisse les lire sans ouvrir les pièces jointes.
+    '=== seance.csv ===', texteCsv([s]), '', '=== participants.csv ===', texteCsv(d.participants || []), '', '=== evenements.csv ===', texteCsv(d.evenements || []),
   ].join('\n');
   GmailApp.sendEmail(ANALYSTES, 'Cowatch — séance du ' + jour + ' (' + minutes + ' min, ' + s.participants + ' pers.)', texte, { attachments: fichiers, name: 'Cowatch Data' });
   ranger();
@@ -56,12 +59,12 @@ function ranger() {
 }
 
 // Tableau d'objets -> fichier CSV (séparateur « ; » pour Excel en français, UTF-8 avec BOM).
-function csv(nom, lignes) {
+function csv(nom, lignes) { return Utilities.newBlob('\uFEFF' + texteCsv(lignes), 'text/csv', nom); }
+function texteCsv(lignes) {
   const cols = [];
   lignes.forEach(function (l) { Object.keys(l).forEach(function (k) { if (cols.indexOf(k) < 0) cols.push(k); }); });
   const esc = function (v) { v = v === undefined || v === null ? '' : String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  const txt = [cols.join(';')].concat(lignes.map(function (l) { return cols.map(function (c) { return esc(l[c]); }).join(';'); })).join('\r\n');
-  return Utilities.newBlob('﻿' + txt, 'text/csv', nom);
+  return [cols.join(';')].concat(lignes.map(function (l) { return cols.map(function (c) { return esc(l[c]); }).join(';'); })).join('\r\n');
 }
 
 function reponse(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
