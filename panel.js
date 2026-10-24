@@ -8,7 +8,7 @@ const params = new URLSearchParams(location.search);
 
 let server = DEFAULT_SERVER, tabId = null, myAvatar = null, st = null, engineLocal = false, diagParts = [];
 let localErr = '', busy = null, busyTimer = null, copiedAt = 0; // busy : bouton qui attend la connexion (« create » ou « join »)
-let pronoEditing = false;
+let pronoEditing = false, consent = null; // consent : accord pour les statistiques anonymes (null = pas encore demandé)
 let theme = T.DEFAULT, picked = T.DEFAULT, choiceFor = 'create', calibOpen = false, lastLog = null, tabTitle = '', titleAt = 0;
 
 // ---------- Ambiance : variables CSS, polices, textes, émojis ----------
@@ -48,7 +48,8 @@ async function startEngine() {
 
 // ---------- Démarrage ----------
 (async () => {
-  const saved = await chrome.storage.local.get(['name', 'server', 'avatar', 'theme']);
+  const saved = await chrome.storage.local.get(['name', 'server', 'avatar', 'theme', 'consent']);
+  consent = typeof saved.consent === 'boolean' ? saved.consent : null; renderConsent();
   if (saved.server) server = saved.server;
   if (params.get('server')) server = params.get('server');
   fetch(server.replace(/\/$/, '') + '/health').catch(() => {}); // réveille le serveur gratuit pendant qu'on tape son pseudo
@@ -180,7 +181,7 @@ function join(code, from, pre) {
   (async () => {
     await chrome.storage.local.set({ name });
     await startEngine();
-    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, theme: from === 'create' ? picked : undefined });
+    await engine({ cmd: 'join', from, code, name, avatar: myAvatar, server, tabId, consent: consent === true, version: chrome.runtime.getManifest().version, theme: from === 'create' ? picked : undefined });
   })();
   return true;
 }
@@ -489,3 +490,13 @@ function renderRecap() {
   box.innerHTML = h;
   $('#rClose').onclick = () => engine({ cmd: 'recapClose' });
 }
+
+// ---------- Statistiques anonymes (phase de test) : accord demandé une fois, modifiable dans le menu ----------
+function renderConsent() {
+  $('#consentBox').classList.toggle('hidden', consent !== null);
+  $('#mConsent').textContent = `Statistiques anonymes : ${consent ? 'oui' : 'non'}`;
+}
+async function setConsent(v) { consent = v; await chrome.storage.local.set({ consent: v }); renderConsent(); engine({ cmd: 'consent', consent: v }); }
+$('#consentYes').onclick = () => setConsent(true);
+$('#consentNo').onclick = () => setConsent(false);
+$('#mConsent').onclick = () => setConsent(!consent);

@@ -47,9 +47,22 @@
   // Journal des derniers événements (connexions, voix, vidéo, calage) ; un souci allume « Copier le rapport » dans le panneau.
   const J = []; S.issue = null;
   function trace(k, d, bad) {
-    J.push([Date.now(), k, String(d ?? '').slice(0, 160)]); if (J.length > 250) J.shift();
+    J.push([Date.now(), k, String(d ?? '').slice(0, 160), !!bad]); if (J.length > 250) J.shift();
     if (bad) { S.issue = { k, d: String(d ?? '').slice(0, 90), at: Date.now() }; snap(); }
   }
+  // ---------- Statistiques anonymes de séance (phase de test, avec l'accord de l'utilisateur) ----------
+  // Partent vers le serveur : site (domaine), version, navigateur, système, état du micro, heure réelle trouvée ou non,
+  // et le NOMBRE de soucis par type. Jamais les messages, les noms, les adresses des pages.
+  let consent = null, version = '', site = '';
+  function sendTelemetry() {
+    if (!S.code || !S.me?.id) return;
+    if (consent !== true) { sendS({ t: 'telemetry', consent: false }); return; }
+    const issues = {}; for (const [, k] of J.filter(([, , , bad]) => bad)) issues[k] = (issues[k] || 0) + 1;
+    const ua = navigator.userAgentData, brand = ua?.brands?.find(b => !/Not.?A.?Brand|Chromium/i.test(b.brand));
+    sendS({ t: 'telemetry', consent: true, site, version, browser: brand ? `${brand.brand} ${brand.version}` : 'Chromium', os: ua?.platform || '',
+      mic: localStream ? (S.muted ? 'coupé' : 'ouvert') : (S.micErr || 'aucun'), realClock: S.live ? !S.noAutoClock : null, issues });
+  }
+  setInterval(sendTelemetry, 60000);
   function report() {
     const hm = t => new Date(t).toTimeString().slice(0, 8);
     return { at: new Date().toISOString(), salon: S.code, mode: S.mode, ambiance: S.theme,
@@ -85,6 +98,7 @@
       case 'hello': if (m.tabId != null && !S.code) S.tabId = m.tabId; snap(true); if (S.code) toTab({ t: 'ping-video' }); break;
       case 'join': return join(m);
       case 'leave': trace('salon', 'quitté'); return leave();
+      case 'consent': consent = !!m.consent; sendTelemetry(); return;
       case 'report': return report();
       case 'issueSeen': S.issue = null; snap(); return;
       case 'bindTab': // le salon suit l'onglet où l'on regarde (panneau ouvert sur un autre onglet, vidéo ouverte après coup)
@@ -128,6 +142,7 @@
     if (m.cmd === 'pos') lastPos = { pos: +m.pos, kind: m.kind, playing: !!m.playing, at: Date.now() };
     if (m.cmd === 'title' && m.title !== S.title) { S.title = String(m.title || '').slice(0, 80); snap(); }
     if (m.cmd === 'kind') { S.live = !!m.live; autoMode(); snap(); }
+    if (m.cmd === 'site' && m.host) site = String(m.host).replace(/^www\./, '').slice(0, 60);
   }
   chrome.runtime.onMessage.addListener((m, sender, reply) => {
     if (m.to === 'engine' && m.cmd === 'stats') { // utilisé par les tests et le diagnostic
@@ -149,6 +164,7 @@
     if (S.code) leave(true);
     S.server = m.server; S.tabId = m.tabId ?? S.tabId; myAvatar = m.avatar || null; S.err = '';
     S.me = { name: m.name }; S.code = code; S.joining = true; S.wake = false; trace('salon', `entrée dans ${code} (${m.from || 'join'})`);
+    if (typeof m.consent === 'boolean') consent = m.consent; if (m.version) version = m.version;
     if (m.theme) wantTheme = m.theme;
     retryS = retryP = 0; outbox = []; snap();
     // Micro et serveurs de voix en parallèle : la connexion au salon n'attend pas.
@@ -161,6 +177,7 @@
   }
   function closeWs(ws) { if (!ws) return; ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null; try { ws.close(); } catch {} }
   function leave(quiet) {
+    sendTelemetry();
     S.code = null; clearInterval(pingS); clearInterval(pingP); clearTimeout(timerS); clearTimeout(timerP);
     closeWs(wsS); closeWs(wsP); wsS = wsP = null;
     peers.forEach(p => { p.pc?.close(); p.audio?.remove(); }); peers.clear(); log.length = 0; seen.clear(); outbox = [];
@@ -229,7 +246,7 @@
         S.theme = m.theme || S.theme; S.owner = !!m.owner; S.pronos = m.pronos || [];
         clearTimeout(lostTimer);
         trace('connexion salon', first ? `ok, ${m.peers.length} autre(s) connexion(s)` : 'reconnecté');
-        if (first) sys('Salon prêt'); else if (back && lostShown) sys('Reconnecté');
+        if (first) { sys('Salon prêt'); setTimeout(sendTelemetry, 5000); } else if (back && lostShown) sys('Reconnecté');
         lostShown = false;
         pushRoster(); autoMode(); snap(true);
         const q = outbox; outbox = []; q.forEach(sendS);
