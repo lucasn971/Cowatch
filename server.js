@@ -238,6 +238,16 @@ function broadcast(room, msg, exceptId, kind) {
 // et c'est alors aux autres d'avancer jusqu'à eux au lieu qu'eux se mettent en pause.
 // Petits écarts (≤ 3 s) : le lecteur en avance ralentit légèrement (0,75×) au lieu de figer l'image.
 const holdFor = sec => (sec > 0 && sec <= 3 ? sec / 0.25 : Math.abs(sec)) * 1000 + 4000;
+// Mode du salon décidé ici, à partir de TOUS les lecteurs : direct dès qu'une vidéo du salon est en direct,
+// replay seulement quand toutes celles qui se sont prononcées sont des replays (à 3 ou 4, plus de bascule à chaque page).
+function roomMode(room, who) {
+  const md = metaOf(room), ps = peersOf(room).filter(c => c.kind === 'player' && c.live != null);
+  const want = ps.some(c => c.live) ? 'live' : ps.length ? 'vod' : md.mode;
+  if (want === md.mode) return;
+  if (want === 'live') { md.syncAgain = 'arrival'; md.syncWho = who?.name || null; }
+  md.mode = want; STATS.mode(room, want, who?.anon || '', 'auto');
+  broadcast(room, { t: 'mode', mode: want, by: 'auto' });
+}
 function autoSync(room) {
   const md = metaOf(room); if (md.mode !== 'live') return;
   const now = Date.now();
@@ -247,6 +257,10 @@ function autoSync(room) {
   if (ps.length < 2) return;
   // Après un calage : on attend une position envoyée APRÈS la fin du calage, sinon on recalerait sur une info périmée.
   if (md.syncEnd && ps.some(c => c.clock.at < md.syncEnd + 500)) return;
+  // … et des mesures STABLES (le lecteur a fini de se replacer) : sinon on corrige une mesure transitoire et le calage
+  // part en ping-pong (ticket du 24/10 : 13 s dans un sens puis 15 s dans l'autre). 3 mesures à moins de 0,5 s l'une de l'autre.
+  const stable = c => { const h = (c.Lh || []).filter(x => x.at > (md.syncEnd || 0) + 500).slice(-3); return h.length >= 3 && Math.max(...h.map(x => x.raw)) - Math.min(...h.map(x => x.raw)) < 0.5; };
+  if (!ps.every(stable)) return;
   // Lecteur revenu tout seul au direct pendant le calage : il ne sait pas prendre de retard, ce sont les autres qui avancent.
   for (const c of ps) if (c.expectL != null && !c.noBack && c.clock.L < c.expectL - 1.5) { c.noBack = true; stats.noBack = (stats.noBack || 0) + 1; }
   const Ls = ps.map(c => c.clock.L).sort((a, b) => a - b), med = Ls[Ls.length >> 1];
@@ -273,6 +287,7 @@ function autoSync(room) {
   }
   md.syncUntil = now + hold; md.syncEnd = md.syncUntil;
   stats.autoSyncs++;
+  if (process.env.CW_DEBUG) console.log('AUTOSYNC', new Date().toISOString().slice(11,19), reason, JSON.stringify(items));
   STATS.calage(room, reason, spread, items, n => peersOf(room).find(c => c.name === n)?.anon);
   broadcast(room, { t: 'autosync', reason, who, items, spread: +spread.toFixed(2) }, null, 'salon');
 }
@@ -290,7 +305,8 @@ function handle(conn) {
     r.delete(me.id);
     broadcast(me.room, { t: 'peer-left', id: me.id });
     if (me.kind === 'player') { const h = hostOf(me.room); if (h) broadcast(me.room, { t: 'host', id: h.id }, null, 'player'); }
-    STATS.onLeave(me.room, me, r.size === 0);
+    if (me.kind === 'player' && r.size) roomMode(me.room, null);
+    STATS.onLeave(me.room, me, r.size === 0, [...r.values()].filter(c => c.kind === 'salon').length);
     if (r.size === 0) { rooms.delete(me.room); meta.delete(me.room); }
   };
   conn.onmessage = raw => {
@@ -320,8 +336,9 @@ function handle(conn) {
       const md = metaOf(room);
       // Le premier arrivé (côté salon) est le créateur : il fixe l'ambiance et pourra la changer.
       if (kind === 'salon' && !md.owner && ![...r.values()].some(c => c.kind === 'salon')) { md.owner = cid || 'x'; if (THEMES.has(m.theme)) md.theme = m.theme; }
+      const isOwner = kind === 'salon' && !!cid && md.owner === cid;
       r.set(me.id, me); stats.joins++;
-      STATS.onJoin(room, me, { replaced: wasReplaced, theme: md.theme, mode: md.mode, salons: [...r.values()].filter(c => c.kind === 'salon').length, players: [...r.values()].filter(c => c.kind === 'player').length });
+      STATS.onJoin(room, me, { owner: isOwner, replaced: wasReplaced, theme: md.theme, mode: md.mode, salons: [...r.values()].filter(c => c.kind === 'salon').length, players: [...r.values()].filter(c => c.kind === 'player').length });
       const h = hostOf(room);
       conn.send({ t: 'welcome', id: me.id, name: me.name, room, peers: others, host: h ? h.id : null, serverTime: Date.now(), mode: md.mode,
         theme: md.theme, owner: !!cid && md.owner === cid, pronos: pronosOf(room) });
@@ -342,6 +359,7 @@ function handle(conn) {
         if (!(pos > 1e8) || m.paused) { me.clock = null; return; }
         // Retard de l'image (s) ; médiane des 3 derniers relevés pour ignorer un relevé isolé.
         const raw = Date.now() / 1000 - pos; me.Lhist = [...(me.Lhist || []).slice(-2), raw];
+        me.Lh = [...(me.Lh || []).slice(-4), { at: Date.now(), raw }];
         me.clock = { L: [...me.Lhist].sort((a, b) => a - b)[me.Lhist.length >> 1], at: Date.now() };
         // Après un calage : s'il a perdu tout seul le retard qu'on lui a fait prendre, son lecteur revient au direct.
         if (me.checkFrom && Date.now() > me.checkFrom && me.expectL != null) {
@@ -411,6 +429,14 @@ function handle(conn) {
         broadcast(me.room, md.recap);
         break;
       }
+      case 'kind': // la page de ce participant lit-elle un direct ? le serveur décide du mode pour tout le salon
+        if (me.kind !== 'player') break;
+        me.live = !!m.live; roomMode(me.room, me);
+        break;
+      case 'unstable': // coupures répétées chez ce participant : pastille « connexion instable » chez les autres
+        if (me.kind !== 'salon') break;
+        if (!!m.on !== !!me.unstable) { me.unstable = !!m.on; broadcast(me.room, { t: 'unstable', id: me.id, on: me.unstable }, me.id); STATS.event(me.room, 'connexion instable', me.unstable ? 'oui' : 'non', me); }
+        break;
       case 'telemetry': // rapport anonyme de l'extension (site, version, soucis) — gardé seulement s'il a donné son accord
         if (me.kind === 'salon') STATS.client(me.room, me, m);
         break;
@@ -435,7 +461,7 @@ function handle(conn) {
       case 'mode': { // bascule série <-> match, pour tout le salon
         const mode = m.mode === 'live' ? 'live' : 'vod';
         const md0 = metaOf(me.room); if (md0.mode !== mode && mode === 'live') { md0.syncAgain = 'arrival'; md0.syncWho = me.name; }
-        if (md0.mode !== mode) STATS.mode(me.room, mode);
+        if (md0.mode !== mode) STATS.mode(me.room, mode, me.anon, 'a la main');
         md0.mode = mode;
         broadcast(me.room, { t: 'mode', mode, by: me.name });
         break;

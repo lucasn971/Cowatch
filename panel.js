@@ -266,7 +266,7 @@ function avatarEl(name, src) {
   if (src) { const i = document.createElement('img'); i.className = 'avatar'; i.src = src; i.alt = ''; return i; }
   const s = document.createElement('span'); s.className = 'avatar'; s.textContent = (name || '?').trim().charAt(0).toUpperCase(); s.style.background = colorOf(name); return s;
 }
-function renderTag(el) { const tag = el.querySelector('.tag'); if (tag) tag.textContent = el.classList.contains('speaking') ? 'parle' : el.dataset.self === '1' ? 'toi' : ''; }
+function renderTag(el) { const tag = el.querySelector('.tag'); if (tag) tag.textContent = el.classList.contains('speaking') ? 'parle' : el.classList.contains('unstable') ? 'connexion instable' : el.dataset.self === '1' ? 'toi' : ''; }
 async function refreshTitle() {
   if (Date.now() - titleAt < 5000) return; titleAt = Date.now();
   try { const tab = await chrome.tabs.get(tabId); tabTitle = (tab.title || '').replace(/\s*[|–-]\s*(Netflix|Prime Video|TF1\+?|Canal\+|myCANAL|YouTube|Paramount\+|Disney\+|M6\+?|france\.tv).*$/i, '').trim(); } catch {}
@@ -274,6 +274,7 @@ async function refreshTitle() {
 }
 function render() {
   if (!st) return;
+  $('#unstableHelp').classList.toggle('hidden', !(st.inRoom && st.unstable)); // coupures répétées chez soi
   // Diagnostic automatique : un souci a été noté => un bouton pour copier le rapport (rien n'est envoyé tout seul).
   $('#issueBar').classList.toggle('hidden', !(st.inRoom && st.issue));
   $('#playerStatus').textContent = st.video ? 'Vidéo détectée ✓' : 'Aucune vidéo détectée'; $('#playerStatus').classList.toggle('ok', !!st.video);
@@ -306,7 +307,10 @@ function render() {
     if (p.muted) { const mb = document.createElement('span'); mb.className = 'mutedBadge'; mb.textContent = '🔇'; mb.title = 'Micro coupé'; av.append(mb); }
     const n = document.createElement('span'); n.className = 'who'; n.textContent = p.name;
     const tag = document.createElement('span'); tag.className = 'tag';
-    el.append(av, n, tag); renderTag(el); box.append(el);
+    if (p.unstable) el.classList.add('unstable');
+    el.append(av, n, tag); renderTag(el);
+    if (p.unstable) { tag.title = 'Coupures répétées : Wi-Fi faible ou ordinateur en économie d\'énergie'; }
+    box.append(el);
   }
 
   // Calés ?

@@ -98,7 +98,9 @@
   }
   setInterval(() => {
     attach(findVideo());
-    if (me && video && mode === 'live' && lastKind && ++clockTick % 2 === 0) {
+    // En direct, l'heure de l'image part dès que le SALON est en direct, même si cette page croit lire un replay
+    // (ticket du 24/10 : un invité arrivé dans un salon déjà en direct n'envoyait rien et n'était jamais calé).
+    if (me && video && mode === 'live' && ++clockTick % 2 === 0) {
       const pos = realPos(video).pos;
       chrome.runtime.sendMessage({ cmd: 'clock', pos, paused: video.paused || Date.now() < ignoreUntil }).catch(() => {});
     }
@@ -150,6 +152,16 @@
   //  - en avance de plus de 3 s : pause le temps de l'avance, puis reprise ;
   //  - en avance de 3 s ou moins : léger ralenti (0,75×), presque invisible, sans figer l'image ;
   //  - en retard (sec < 0) : on avance d'autant (le lecteur d'en face ne peut pas prendre plus de retard).
+  // Recul dans le direct : plus fiable qu'une longue pause (certains lecteurs repartent ailleurs après 10 s de pause).
+  function seekBackLive(sec) {
+    try {
+      const sk = video.seekable; if (!sk.length) return false;
+      const to = video.currentTime - sec; if (to < sk.start(sk.length - 1) + 1) return false;
+      quiet(4000); seekTo(to);
+      const v = video; setTimeout(() => { if (v === video && Math.abs(v.currentTime - to) > 2.5 + 2) { tr('déplacement raté', `recul de ${sec.toFixed(1)} s non appliqué`, true); v.pause(); setTimeout(() => v.play().catch(() => {}), sec * 1000); } }, 2000);
+      return true;
+    } catch { return false; }
+  }
   function align(sec, auto) {
     if (!video || !sec) return;
     tr('calage', `${sec > 0 ? 'avance' : 'retard'} ${Math.abs(sec).toFixed(2)} s${auto ? ' (auto)' : ''}`);
@@ -166,6 +178,7 @@
       alignTimer = setTimeout(() => { quiet(); video.playbackRate = 1; }, dur * 1000);
       return;
     }
+    if (auto && mode === 'live' && sec > 3 && seekBackLive(sec)) { banner(`Calage avec le salon… (${sec.toFixed(1)} s)`); return; }
     quiet(sec * 1000 + 1500);
     video.pause();
     banner(auto ? `Calage avec le salon… (${sec.toFixed(1)} s)` : `Alignement : pause ${sec.toFixed(1)} s`);
@@ -542,7 +555,7 @@
     if (m.t === 'toast') { toast(m.text); return; }
     if (m.t === 'diag') { diagnose().then(d => chrome.runtime.sendMessage({ cmd: 'diag', data: d }).catch(() => {})); return; }
     if (m.t === 'ping-video') { if (video) chrome.runtime.sendMessage({ cmd: 'video', found: true }).catch(() => {}); return; }
-    if (m.t === 'welcome') { inRoom = true; if (m.theme) setTheme(m.theme); loadFonts(); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
+    if (m.t === 'welcome') { lastKind = null; if (video) chrome.runtime.sendMessage({ cmd: 'site', host: location.hostname }).catch(() => {}); inRoom = true; if (m.theme) setTheme(m.theme); loadFonts(); renderReopen(); renderProno(); mode = m.mode || 'vod'; me = m.id; host = m.host || m.id; offset = m.offset || 0; startStateLoop(); if (video) banner(isHost() ? 'Salon connecté — tu pilotes la lecture' : 'Salon connecté — calage sur le pilote…'); }
     else if (m.t === 'host') { host = m.id; startStateLoop(); }
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }

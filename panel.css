@@ -127,3 +127,4 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 
 /* Accord statistiques (phase de test) */
 .consent { margin-top: 14px } .consent .row { justify-content: flex-start }
+.peer.unstable .tag { color: #FFD27A }

@@ -38,7 +38,7 @@
   }
   function snapshot() {
     return { ...S, inRoom: !!(S.me && S.me.id),
-      peers: [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.avatar || null, state: p.state || '', speaking: !!p.speaking, self: p.id === S.me?.id, muted: p.id === S.me?.id ? S.muted : !!p.muted })) };
+      peers: [...peers.values()].filter(p => p.kind === 'salon').map(p => ({ id: p.id, name: p.name, avatar: p.avatar || null, state: p.state || '', speaking: !!p.speaking, self: p.id === S.me?.id, muted: p.id === S.me?.id ? S.muted : !!p.muted, unstable: p.id === S.me?.id ? !!S.unstable : !!p.unstable })) };
   }
   function addLog(item) { log.push(item); if (log.length > 150) log.shift(); EMIT({ ev: 'log', item }); }
   const sys = text => { trace('message', text); addLog({ kind: 'sys', text, at: Date.now() }); };
@@ -63,6 +63,26 @@
       mic: localStream ? (S.muted ? 'coupé' : 'ouvert') : (S.micErr || 'aucun'), realClock: S.live ? !S.noAutoClock : null, issues });
   }
   setInterval(sendTelemetry, 60000);
+  // Connexion instable : 3 coupures en 5 min => avertissement pour soi, et pastille visible par les autres.
+  let cuts = [];
+  function noteCut() {
+    const now = Date.now(); cuts = cuts.filter(t => now - t < 300000); cuts.push(now);
+    if (cuts.length >= 3 && !S.unstable) { S.unstable = true; trace('connexion instable', `${cuts.length} coupures en 5 min`, true); snap(); }
+  }
+  setInterval(() => {
+    if (!S.unstable) return;
+    cuts = cuts.filter(t => Date.now() - t < 300000);
+    if (!cuts.length) { S.unstable = false; sendS({ t: 'unstable', on: false }); snap(); } else sendS({ t: 'unstable', on: true });
+  }, 30000);
+  // Plus d'onglet vidéo ni de panneau ouvert pendant 5 min : on quitte le salon (avant, une connexion restait ouverte
+  // sans personne derrière et gardait le salon « vivant » jusqu'à 15 min : ticket du 24/10).
+  let orphan = 0;
+  setInterval(async () => {
+    if (!S.code || !OFFSCREEN) { orphan = 0; return; }
+    const r = await chrome.runtime.sendMessage({ to: 'bg', cmd: 'alive', tabId: S.tabId }).catch(() => null);
+    if (!r || r.tab || r.panel) { orphan = 0; return; }
+    if (++orphan >= 5) { orphan = 0; trace('salon', 'quitté tout seul : plus d\'onglet vidéo ni de panneau'); leave(); }
+  }, 60000);
   function report() {
     const hm = t => new Date(t).toTimeString().slice(0, 8);
     return { at: new Date().toISOString(), salon: S.code, mode: S.mode, ambiance: S.theme,
@@ -219,9 +239,10 @@
       ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'salon', cid: CID, avatar: myAvatar || undefined, theme: wantTheme }));
       clearInterval(pingS); pingS = setInterval(() => sendS({ t: 'ping' }), 30000);
     };
-    ws.onclose = () => {
+    ws.onclose = e => {
       clearTimeout(slow); clearInterval(pingS); if (ws !== wsS || !S.code) return;
-      trace('connexion salon', `coupée (essai ${retryS + 1})`, retryS >= 2);
+      trace('connexion salon', `coupée, code ${e?.code ?? '?'} (essai ${retryS + 1})`, retryS >= 2);
+      if (ws.ok) noteCut();
       const d = backoff(retryS++);
       if (S.me?.id && !S.joining) {
         S.joining = true; snap();
@@ -246,6 +267,7 @@
         S.theme = m.theme || S.theme; S.owner = !!m.owner; S.pronos = m.pronos || [];
         clearTimeout(lostTimer);
         trace('connexion salon', first ? `ok, ${m.peers.length} autre(s) connexion(s)` : 'reconnecté');
+        if (S.unstable) sendS({ t: 'unstable', on: true });
         if (first) { sys('Salon prêt'); setTimeout(sendTelemetry, 5000); } else if (back && lostShown) sys('Reconnecté');
         lostShown = false;
         pushRoster(); autoMode(); snap(true);
@@ -264,6 +286,7 @@
         snap();
       }
       if (m.t === 'mute') { const p = peers.get(m.id); if (p) { p.muted = !!m.muted; pushRoster(); snap(); } }
+      if (m.t === 'unstable') { const p = peers.get(m.id); if (p) { p.unstable = !!m.on; snap(); } }
       if (m.t === 'theme') { S.theme = m.theme; if (lastWelcome) lastWelcome.theme = m.theme; sys(`Ambiance : ${(self.CowatchThemes?.THEMES[m.theme] || {}).name || m.theme}`); pushRoster(); snap(); }
       if (m.t === 'pronos') { S.pronos = m.items || []; pushRoster(); snap(); }
       if (m.t === 'recap') { const fresh = !S.recap || S.recap.at !== m.at; S.recap = m; trace('récap', m.score || 'sans score'); if (fresh && Date.now() - m.at < 60000) sys('Récap de la soirée'); snap(); }
@@ -299,17 +322,19 @@
     clearTimeout(timerP); closeWs(wsP);
     const ws = wsP = new WebSocket(wsUrl());
     ws.onopen = () => { ws.send(JSON.stringify({ t: 'join', room: S.code, name: S.me.name, kind: 'player', cid: CID })); clearInterval(pingP); pingP = setInterval(() => sendP({ t: 'ping' }), 20000); };
-    ws.onclose = () => { clearInterval(pingP); if (ws !== wsP || !S.code) return; trace('connexion lecteur', `coupée (essai ${retryP + 1})`, retryP >= 2); timerP = setTimeout(() => { if (S.code && ws === wsP) connectPlayer(); }, backoff(retryP++)); };
+    ws.onclose = e => { clearInterval(pingP); if (ws !== wsP || !S.code) return; trace('connexion lecteur', `coupée, code ${e?.code ?? '?'} (essai ${retryP + 1})`, retryP >= 2); timerP = setTimeout(() => { if (S.code && ws === wsP) connectPlayer(); }, backoff(retryP++)); };
     ws.onmessage = ev => {
       if (ws !== wsP) return;
       const m = JSON.parse(ev.data);
-      if (m.t === 'welcome') { retryP = 0; lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(welcomeNow()); pushRoster(); }
+      if (m.t === 'welcome') { retryP = 0; setTimeout(autoMode, 300); lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(welcomeNow()); pushRoster(); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
       else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme', 'recap'].includes(m.t)) toTab(m);
     };
   }
   // Mode choisi automatiquement : direct (match) ou replay / série, selon la vidéo de l'onglet.
-  function autoMode() { if (S.code && S.me?.id && S.live != null && (S.live ? 'live' : 'vod') !== S.mode) sendS({ t: 'mode', mode: S.live ? 'live' : 'vod' }); }
+  // Direct ou replay : chaque page le dit au serveur, qui décide pour tout le salon (en direct dès qu'une vidéo est en direct).
+  // Avant, chaque participant forçait le mode du salon : à 3 ou 4, ça basculait sans arrêt.
+  function autoMode() { if (S.code && S.live != null) sendP({ t: 'kind', live: S.live }); }
 
   // ---------- Voix (WebRTC pair à pair) ----------
   function makePC(id) {
