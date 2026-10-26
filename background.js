@@ -84,6 +84,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.cmd === 'panelState' && sender.tab) { reply({ open: openPanels.has(sender.tab.id) }); return; }
   if (msg.to !== 'bg') return;
   if (msg.cmd === 'ensureEngine') { ensureEngine().then(ok => reply({ ok })).catch(e => reply({ ok: false, error: String(e) })); return true; }
+  // Le moteur demande s'il reste quelqu'un derrière le salon : l'onglet vidéo existe-t-il, un panneau est-il ouvert ?
+  if (msg.cmd === 'alive') { (msg.tabId == null ? Promise.resolve(null) : chrome.tabs.get(msg.tabId).catch(() => null)).then(t => reply({ tab: !!t, panel: openPanels.size > 0 })); return true; }
   if (msg.cmd === 'relay') { chrome.tabs.sendMessage(msg.tabId, msg.m).catch(() => {}); return; }
   if (msg.cmd === 'engineIdle') { chrome.offscreen?.closeDocument?.().catch(() => {}); return; }
 });

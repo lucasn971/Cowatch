@@ -12,6 +12,7 @@ const got = [];
 http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => { try { got.push(JSON.parse(b)); } catch {} res.end('{"ok":true}'); }); }).listen(8097);
 
 (async () => {
+  const T0 = Date.now();
   const st = await (await fetch(BASE + '/stats')).json();
   ok(st.statsSeances === true, 'serveur de test : envoi des statistiques activé (TELEMETRY_URL)');
   const mk = dir => chromium.launchPersistentContext(dir, { headless: true, channel: 'chromium', args: [
@@ -41,8 +42,9 @@ http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.o
   await A.p.fill('#pH', '2'); await A.p.fill('#pA', '1'); await A.p.click('#pGo');
   await sleep(800);
   for (const P of [A, B]) { await P.p.click('#menuBtn'); await P.p.click('#leave'); }
-  ok(await until(async () => got.length > 0, 15000), 'fin de séance (salon vide) : les statistiques partent toutes seules');
-  const d = got[0] || {}, s = d.session || {}, raw = JSON.stringify(d);
+  ok(await until(async () => got.some(g => Date.parse(g.session?.debut) >= T0), 15000), 'fin de séance (salon vide) : les statistiques partent toutes seules');
+  // Le serveur de test sert à plusieurs tests d'affilée : on prend la séance commencée pendant CE test.
+  const d = got.find(g => Date.parse(g.session?.debut) >= T0) || {}, s = d.session || {}, raw = JSON.stringify(d);
   ok(s.participants === 2 && s.avec_video === 2, `séance : 2 participants, 2 vidéos reliées (${s.participants}, ${s.avec_video})`);
   ok(s.messages === 1 && s.reactions >= 3 && s.pronos === 1, `compteurs : 1 message, ${s.reactions} réactions, ${s.pronos} prono`);
   ok(s.duree_s > 5 && s.ambiance === 'vestiaire' && s.accords === 1, `durée ${s.duree_s} s, ambiance ${s.ambiance}, ${s.accords} accord`);

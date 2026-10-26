@@ -23,7 +23,7 @@ function sess(room) {
   if (!s) {
     s = { id: crypto.randomBytes(5).toString('hex'), start: Date.now(), end: null, theme: '', modes: new Set(), people: new Map(),
       peakSalon: 0, peakPlayers: 0, n: { reactions: 0, messages: 0, buts: 0, var: 0, pronos: 0, recaps: 0, calages: 0, calagesBloques: 0, reconnexions: 0, themes: 0 },
-      maxEcart: 0, events: [], timer: null };
+      maxEcart: 0, events: [], timer: null, owner: '', multiSince: 0, multiMs: 0, lastLeave: 0, rpm: new Map() };
     sessions.set(room, s);
   }
   if (s.timer) { clearTimeout(s.timer); s.timer = null; }
@@ -38,20 +38,28 @@ function onJoin(room, me, info) {
   if (!p) { p = { anon: a, salon: false, video: false, web: !me.cid, first: Date.now(), last: Date.now(), joins: 0, consent: null, client: null }; s.people.set(a, p); }
   if (me.kind === 'salon') p.salon = true; else p.video = true;
   p.joins++; p.last = Date.now();
+  if (info.owner && !s.owner) s.owner = a;
+  if (me.kind === 'salon' && info.salons >= 2 && !s.multiSince) s.multiSince = Date.now(); // début du temps passé à 2 ou plus
   if (info.replaced) { s.n.reconnexions++; ev(s, 'reconnexion', me.kind, a); } else ev(s, 'arrivee', me.kind === 'player' ? 'video reliee' : 'panneau', a);
   if (info.theme) s.theme = info.theme;
   if (info.mode) s.modes.add(info.mode);
   s.peakSalon = Math.max(s.peakSalon, info.salons); s.peakPlayers = Math.max(s.peakPlayers, info.players);
 }
-function onLeave(room, me, empty) {
+function onLeave(room, me, empty, salons = 0) {
   const s = sessions.get(room); if (!s) return;
   const p = s.people.get(me.anon); if (p) p.last = Date.now();
+  if (me.kind === 'salon') s.lastLeave = Date.now();
+  if (me.kind === 'salon' && salons < 2 && s.multiSince) { s.multiMs += Date.now() - s.multiSince; s.multiSince = 0; }
   ev(s, 'depart', me.kind, me.anon || '');
-  if (empty) { s.end = Date.now(); s.timer = setTimeout(() => finish(room), GRACE); s.timer.unref?.(); }
+  if (empty) { s.end = s.lastLeave || Date.now(); s.timer = setTimeout(() => finish(room), GRACE); s.timer.unref?.(); }
 }
-function count(room, what, n = 1) { const s = sessions.get(room); if (s && what in s.n) s.n[what] += n; }
+function count(room, what, n = 1) {
+  const s = sessions.get(room); if (!s || !(what in s.n)) return;
+  s.n[what] += n;
+  if (what === 'reactions') { const k = Math.floor((Date.now() - s.start) / 60000); s.rpm.set(k, (s.rpm.get(k) || 0) + n); }
+}
 function event(room, type, detail, me) { const s = sessions.get(room); if (s) ev(s, type, detail, me?.anon || ''); }
-function mode(room, m) { const s = sessions.get(room); if (s) { s.modes.add(m); ev(s, 'mode', m); } }
+function mode(room, m, who = '', how = '') { const s = sessions.get(room); if (s) { s.modes.add(m); ev(s, 'mode', how ? `${m} (${how})` : m, who); } }
 function theme(room, t) { const s = sessions.get(room); if (s) { s.theme = t; s.n.themes++; ev(s, 'ambiance', t); } }
 function calage(room, reason, spread, items, anonByName) {
   const s = sessions.get(room); if (!s) return;
@@ -79,7 +87,9 @@ async function finish(room) {
     key: KEY,
     session: { id: s.id, debut: new Date(s.start).toISOString(), fin: new Date(s.end || Date.now()).toISOString(), duree_s: dur,
       participants: people.filter(p => p.salon).length, avec_video: people.filter(p => p.video).length, web_sans_extension: people.filter(p => p.web).length,
-      max_simultanes: s.peakSalon, modes: [...s.modes].join('+'), ambiance: s.theme,
+      max_simultanes: s.peakSalon, duree_a_plusieurs_s: Math.round((s.multiMs + (s.multiSince ? (s.end || Date.now()) - s.multiSince : 0)) / 1000),
+      createur: s.owner, modes: [...s.modes].join('+'), ambiance: s.theme,
+      reactions_par_minute: [...s.rpm.entries()].sort((a, b) => a[0] - b[0]).map(([k, n]) => `${k}:${n}`).join(' '),
       sites: [...new Set(people.map(p => p.client?.site).filter(Boolean))].join('+'),
       ...s.n, ecart_max_s: +s.maxEcart.toFixed(2), accords: people.filter(p => p.consent).length },
     participants: people.map(p => p.consent ? {
