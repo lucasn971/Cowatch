@@ -10,7 +10,7 @@
 <body>
 <!-- Structure unique pour toutes les ambiances (passation Design du 22/10) : seuls les tokens --cw-* changent. -->
 <header>
-  <span class="logo">Cowatch</span>
+  <span class="logo" id="logo">Cowatch</span>
   <span class="status small" id="playerStatus">Aucune vidéo détectée</span>
   <button class="icon hidden" id="foldBtn" aria-label="Replier le panneau" title="Replier le panneau (la vidéo prend toute la place)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6l6 6-6 6M5 6l6 6-6 6"/></svg></button>
   <button class="icon" id="menuBtn" aria-label="Plus d'options" aria-haspopup="true" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
@@ -67,6 +67,8 @@
   <div id="micHelp" class="small warn hidden"></div>
   <div id="unstableHelp" class="small warn hidden">Connexion instable chez toi : rapproche-toi de la box, ou branche l'ordinateur sur secteur (l'économie d'énergie coupe souvent le Wi-Fi).</div>
 
+  <!-- Paddock : feux de départ, lancés par n'importe qui, vus par tous au même moment de leur vidéo -->
+  <button id="lightsBtn" class="lights hidden"><span class="lamps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Feux de départ</button>
   <!-- Bloc propre à l'ambiance : Vestiaire = prono d'avant-match -->
   <div id="prono" class="prono hidden">
     <div id="pronoEdit" class="prono-edit">

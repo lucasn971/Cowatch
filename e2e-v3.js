@@ -25,7 +25,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1500);
   ok((await pA.textContent('#playerStatus')).includes('détectée ✓'), 'panneau de Lucas détecte la vidéo de l\'onglet');
   await pA.fill('#name', 'Lucas'); await pA.click('#create');
-  ok(await pA.isVisible('#choice') && await pA.locator('.card').count() === 6, 'écran « Ce soir, quelle ambiance ? » avec les 6 ambiances');
+  ok(await pA.isVisible('#choice') && await pA.locator('.card').count() === 7, 'écran « Ce soir, quelle ambiance ? » avec les 7 ambiances');
   await pA.click('#go');
   await pA.waitForSelector('#room:not(.hidden)');
   const code = await pA.textContent('#code');
