@@ -60,8 +60,8 @@ http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.o
 
   // Fin de séance : statistiques pour 4
   for (const X of [A, B, C, D]) { await X.p.click('#menuBtn'); await X.p.click('#leave'); }
-  const tg = await until(async () => got.length > 0, 20000);
-  const d = got[0] || {}, s = d.session || {};
+  const tg = await until(async () => got.some(g => g.session?.participants === 4), 20000);
+  const d = got.find(g => g.session?.participants === 4) || {}, s = d.session || {};
   ok(tg != null && s.participants === 4 && s.avec_video === 4 && s.accords === 4, `statistiques : 4 participants, 4 vidéos, 4 accords (${s.participants}, ${s.avec_video}, ${s.accords})`);
   ok(/^[0-9a-f]{12}$/.test(s.createur || '') && s.duree_a_plusieurs_s > 20, `créateur ${s.createur}, ${s.duree_a_plusieurs_s} s à plusieurs`);
   ok((d.evenements || []).filter(e => e.type === 'mode').every(e => e.qui !== undefined) && (d.evenements || []).some(e => e.type === 'calage'), 'événements de mode et de calage présents');
