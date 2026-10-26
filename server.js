@@ -245,7 +245,7 @@ function roomMode(room, who) {
   const want = ps.some(c => c.live) ? 'live' : ps.length ? 'vod' : md.mode;
   if (want === md.mode) return;
   if (want === 'live') { md.syncAgain = 'arrival'; md.syncWho = who?.name || null; }
-  md.mode = want; STATS.mode(room, want, who?.anon || '', 'auto');
+  md.mode = want; STATS.mode(room, want, who?.anon || '', 'auto'); if (process.env.CW_DEBUG) console.log('MODE', want);
   broadcast(room, { t: 'mode', mode: want, by: 'auto' });
 }
 function autoSync(room) {
@@ -280,7 +280,7 @@ function autoSync(room) {
   let hold = 0;
   for (const it of items) if (Math.abs(it.ahead) > 0.3) {
     hold = Math.max(hold, holdFor(it.ahead));
-    for (const c of peersOf(room)) if (c.name === it.name) {
+    for (const c of peersOf(room)) if (c.name === it.name && c.kind === 'player') { // le lecteur seul : envoyé aussi au panneau, il s'appliquait deux fois
       c.conn.send({ t: 'align', pauseFor: it.ahead, name: it.name, auto: true });
       if (c.kind === 'player' && c.clock) { c.expectL = c.clock.L + it.ahead; c.checkFrom = now + holdFor(it.ahead); }
     }
@@ -431,7 +431,7 @@ function handle(conn) {
       }
       case 'kind': // la page de ce participant lit-elle un direct ? le serveur décide du mode pour tout le salon
         if (me.kind !== 'player') break;
-        me.live = !!m.live; roomMode(me.room, me);
+        me.live = !!m.live; if (process.env.CW_DEBUG) console.log('KIND', me.name, me.live); roomMode(me.room, me);
         break;
       case 'unstable': // coupures répétées chez ce participant : pastille « connexion instable » chez les autres
         if (me.kind !== 'salon') break;

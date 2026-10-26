@@ -2,8 +2,14 @@
 (() => {
   // Une seule instance vivante par page. Après une mise à jour de Cowatch, l'ancienne instance reste dans la page
   // (sans pouvoir parler à l'extension) : la nouvelle prend la main et efface ses restes (languette morte, etc.).
+  // Une instance encore vivante (Cowatch injecté deux fois, par exemple à l'installation) garde la main : on lui demande
+  // par un événement de la page, qui répond tout de suite si elle peut encore parler à l'extension.
+  let otherAlive = false; const onPong = () => { otherAlive = true; };
+  document.addEventListener('cowatch-pong', onPong); document.dispatchEvent(new CustomEvent('cowatch-ping')); document.removeEventListener('cowatch-pong', onPong);
+  if (otherAlive) return;
   const INST = Math.random().toString(36).slice(2);
   window.__salonSync = INST;
+  document.addEventListener('cowatch-ping', () => { if (alive()) document.dispatchEvent(new CustomEvent('cowatch-pong')); });
   const alive = () => window.__salonSync === INST && !!(chrome.runtime && chrome.runtime.id);
   const mine = el => { el.dataset.cwInst = INST; return el; };
   const stale = n => n.nodeType === 1 && typeof n.id === 'string' && n.id.startsWith('cowatch-') && n.dataset.cwInst !== INST;
@@ -59,13 +65,13 @@
     tr('vidéo', `${location.hostname} ${v.clientWidth}×${v.clientHeight}${isFinite(v.duration) ? '' : ' direct'}`);
     v.addEventListener('error', () => tr('erreur vidéo', `code ${v.error?.code || '?'} ${v.error?.message || ''}`.trim(), true));
     for (const ev of ['play', 'pause', 'seeked']) v.addEventListener(ev, () => {
-      if (Date.now() < ignoreUntil || !me || mode !== 'vod') return; // en direct, chacun garde son flux
+      if (Date.now() < ignoreUntil || !me || mode !== 'vod' || isLive(v)) return; // en direct, chacun garde son flux
       if (ev === 'pause' && Date.now() - uiTouchAt < 1500) return; // pause causée par un clic sur Cowatch : jamais envoyée aux autres
       emit(ev === 'seeked' ? 'seek' : ev);
     });
   }
   function emit(action) {
-    if (!video) return;
+    if (!video || isLive(video)) return;
     chrome.runtime.sendMessage({ cmd: 'sync', action, time: video.currentTime, playing: !video.paused, rate: video.playbackRate }).catch(() => {}); // vers le panneau
   }
   // Direct ou replay ? (durée infinie ou gigantesque = direct, comme sur Canal+)
@@ -132,7 +138,7 @@
     else video.currentTime = t;
   }
   async function apply(m) {
-    if (!video || mode !== 'vod') return;
+    if (!video || mode !== 'vod' || isLive(video)) return; // une vidéo en direct n'obéit jamais aux play / pause / avance d'un replay
     const now = Date.now() + offset;
     const target = m.time + (m.playing ? Math.max(0, now - m.sentAt) / 1000 * (m.rate || 1) : 0);
     const drift = video.currentTime - target;
@@ -156,14 +162,17 @@
   function seekBackLive(sec) {
     try {
       const sk = video.seekable; if (!sk.length) return false;
-      const to = video.currentTime - sec; if (to < sk.start(sk.length - 1) + 1) return false;
+      const to = video.currentTime - sec; if (to < sk.start(sk.length - 1) + 10) return false; // trop près du début de la fenêtre du direct : le lecteur sauterait ailleurs
       quiet(4000); seekTo(to);
       const v = video; setTimeout(() => { if (v === video && Math.abs(v.currentTime - to) > 2.5 + 2) { tr('déplacement raté', `recul de ${sec.toFixed(1)} s non appliqué`, true); v.pause(); setTimeout(() => v.play().catch(() => {}), sec * 1000); } }, 2000);
       return true;
     } catch { return false; }
   }
+  let lastAlign = { at: 0, sec: 0 };
   function align(sec, auto) {
     if (!video || !sec) return;
+    if (Date.now() - lastAlign.at < 1500 && Math.abs(lastAlign.sec - sec) < 0.05) return; // même ordre reçu deux fois : un recul ne doit pas s'additionner
+    lastAlign = { at: Date.now(), sec };
     tr('calage', `${sec > 0 ? 'avance' : 'retard'} ${Math.abs(sec).toFixed(2)} s${auto ? ' (auto)' : ''}`);
     clearTimeout(alignTimer); video.playbackRate = 1;
     if (sec < 0) {

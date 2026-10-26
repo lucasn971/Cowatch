@@ -1,4 +1,4 @@
-// Lot 8 (ticket Data analyst du 24/10) : salon à 4 sur un faux direct type TF1, retards différents (6, 9, 12 et 22 s).
+// Lot 8 (ticket Data analyst du 24/10) : salon à 4 sur un faux direct type TF1, retards différents (4, 6, 8 et 15 s ; le faux direct garde 16 s d'image).
 // Octave arrive en retard dans un salon déjà en direct (P1). On vérifie : tout le monde se cale, peu de calages
 // (pas de ping-pong, P3), le mode reste « direct », et les statistiques de séance sont justes pour 4 personnes.
 const { chromium } = require('/opt/npm-tools/node_modules/playwright');
@@ -33,7 +33,7 @@ http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.o
   const spread = async xs => { const t = await Promise.all(xs.map(truth)); return Math.max(...t) - Math.min(...t); };
   const until = async (f, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await f()) return (Date.now() - t0) / 1000; await sleep(1000); } return null; };
 
-  const A = await person('/tmp/claude-0/q4a', 'lucas', 6, 'Lucas'), B = await person('/tmp/claude-0/q4b', 'agathe', 9, 'Agathe'), C = await person('/tmp/claude-0/q4c', 'cecile', 12, 'Cécile');
+  const A = await person('/tmp/claude-0/q4a', 'lucas', 4, 'Lucas'), B = await person('/tmp/claude-0/q4b', 'agathe', 6, 'Agathe'), C = await person('/tmp/claude-0/q4c', 'cecile', 8, 'Cécile');
   await A.p.click('#create'); await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
   const code = await A.p.textContent('#code');
   for (const X of [B, C]) { await X.p.fill('#codeIn', code); await X.p.click('#joinBtn'); await X.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 }); }
@@ -41,8 +41,8 @@ http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.o
   const t3 = await until(async () => (await spread([A, B, C])) < 400, 40000);
   ok(t3 != null, `à 3 : tout le monde calé (écart ${Math.round(await spread([A, B, C]))} ms, en ${t3 ?? '—'} s)`);
 
-  // Octave arrive en retard (22 s de retard) dans un salon déjà en direct
-  const D = await person('/tmp/claude-0/q4d', 'octave', 22, 'Octave');
+  // Octave arrive en retard (15 s de retard) dans un salon déjà en direct
+  const D = await person('/tmp/claude-0/q4d', 'octave', 15, 'Octave');
   const before = await spread([A, B, C, D]);
   ok(before > 3000, `Octave arrive avec ${(before / 1000).toFixed(1)} s d'écart sur les autres`);
   await D.p.fill('#codeIn', code); await D.p.click('#joinBtn'); await D.p.waitForSelector('#room:not(.hidden)', { timeout: 15000 });
