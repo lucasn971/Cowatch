@@ -35,7 +35,8 @@ function nettoieSondage(d) {
     if (Array.isArray(v)) answers[k] = v.slice(0, 15).map(x => String(x).slice(0, 40));
     else if (v != null) answers[k] = String(v).slice(0, k === 'email' ? 120 : 40);
   }
-  return { track: d.track, v: Number(d.v) || 1, duree_s: Math.max(0, Math.min(3600, Number(d.duree_s) || 0)), answers };
+  const src = String(d.src || 'direct').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30) || 'direct'; // d'où vient la réponse (?src=discord, reddit…)
+  return { track: d.track, v: Number(d.v) || 1, src, duree_s: Math.max(0, Math.min(3600, Number(d.duree_s) || 0)), answers };
 }
 function recoitSondage(req, res) {
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();

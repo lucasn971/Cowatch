@@ -11,8 +11,8 @@ git add cowatch.zip && { git diff --cached --quiet || git commit -qm "cowatch.zi
 git diff --quiet || { echo "modifications non enregistrées sur prochaine-version"; exit 1; }
 git checkout -q main && git pull -q --ff-only origin main 2>/dev/null || true
 git checkout prochaine-version -- .
-git rm -q --cached sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs 2>/dev/null || true
-rm -f sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs
+git rm -q --cached sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs sondage.js 2>/dev/null || true
+rm -f sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs sondage.js
 python3 - <<'PY'
 import re
 s = open('server.js').read()

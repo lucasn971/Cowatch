@@ -16,7 +16,7 @@ function doPost(e) {
     const feuille = ss.getSheetByName(nom) || ss.insertSheet(nom);
 
     // Une colonne par question ; les réponses multiples sont séparées par des virgules.
-    const ligne = { date: d.date, duree_s: d.duree_s };
+    const ligne = { date: d.date, src: d.src || '', version: d.v || 1, duree_s: d.duree_s }; // src : discord, reddit… (lien ?src=)
     Object.keys(d.answers || {}).forEach(function (k) {
       const v = d.answers[k];
       ligne[k] = Array.isArray(v) ? v.join(', ') : v;

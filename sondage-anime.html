@@ -100,6 +100,8 @@ input[type="email"]{
 }
 .profile{font-family:var(--display); font-size:clamp(26px,7vw,34px); color:var(--accent); line-height:1.15; margin:0}
 .note{font-size:13px; color:var(--muted)}
+.check{display:flex; align-items:center; gap:10px; margin:14px 0 4px; font-size:15px; cursor:pointer}
+.check input{width:22px; height:22px; accent-color:var(--accent); flex:none; margin:0}
 .foot{margin-top:auto; text-align:center; font-size:12px; color:var(--muted)}
 .fade{animation:in .28s ease both}
 @keyframes in{from{opacity:.001; transform:translateY(8px)}to{opacity:1; transform:none}}
@@ -159,6 +161,13 @@ const PITCH = TRACK === "anime" ? {
 const Q = {
   anime:[
     SCREENS,
+    {id:"telephone", type:"single", kicker:"Ton téléphone",
+     title:"Ton téléphone, c'est plutôt…",
+     options:[
+      {v:"android", ic:"🤖", t:"Android", s:"Samsung, Xiaomi, Pixel…"},
+      {v:"iphone", ic:"🍏", t:"iPhone"},
+      {v:"autre", ic:"🤷", t:"Autre ou pas de téléphone"}
+     ]},
     {id:"plateformes", type:"multi", kicker:"Les sources",
      title:"Tu regardes où ?", quip:"Coche tout. Même ce qu'on ne dit pas à voix haute.",
      options:[
@@ -215,6 +224,20 @@ const Q = {
       {v:"vf", ic:"🇫🇷", t:"VF assumée", s:"Je veux voir l'action, pas lire"},
       {v:"depend", ic:"🤝", t:"Ça dépend du doublage"}
      ]},
+    {id:"manga_lu", type:"single", kicker:"Team papier",
+     title:"Tu as lu le manga des séries que tu regardes ?",
+     options:[
+      {v:"souvent", ic:"📖", t:"Oui, souvent", s:"J'ai toujours trois tomes d'avance"},
+      {v:"parfois", ic:"📚", t:"Parfois", s:"Pour mes séries préférées"},
+      {v:"jamais", ic:"📺", t:"Jamais", s:"Je découvre avec l'anime"}
+     ]},
+    {id:"spoil_subi", type:"single", kicker:"Zone de danger",
+     title:"Tu te fais spoiler ?",
+     options:[
+      {v:"souvent", ic:"💀", t:"Souvent", s:"Les lecteurs du manga n'ont aucune pitié"},
+      {v:"parfois", ic:"😬", t:"Parfois", s:"Un titre de vidéo, un mème…"},
+      {v:"jamais", ic:"🛡️", t:"Jamais", s:"Je fuis les réseaux le jour de la sortie"}
+     ]},
     {id:"pitch", type:"pitch"},
     {id:"interet", type:"scale", kicker:"Verdict",
      title:"Franchement, ça te parle ?",
@@ -230,6 +253,14 @@ const Q = {
       {v:"plein_ecran", ic:"🖥️", t:"Un plein écran propre"},
       {v:"jeux", ic:"🎲", t:"Pronostics et mini-jeux", s:"Qui meurt cet épisode ?"},
       {v:"createur", ic:"⭐", t:"Regarder avec un créateur", s:"Un streamer ou youtubeur anime"}
+     ]},
+    {id:"salle_attente", type:"single", kicker:"Avant l'épisode",
+     title:"Une salle d'attente avec compte à rebours avant la sortie de l'épisode, ça te tente ?",
+     quip:"Tout le monde se retrouve, on papote, et l'épisode démarre pour tous en même temps.",
+     options:[
+      {v:"grave", ic:"⏳", t:"Grave", s:"Le rendez-vous de la semaine"},
+      {v:"pourquoi_pas", ic:"🙂", t:"Pourquoi pas"},
+      {v:"inutile", ic:"🙅", t:"Inutile", s:"Je lance quand je veux"}
      ]},
     {id:"payer", type:"single", kicker:"Question qui fâche",
      title:"Pour un truc comme ça, tu serais prêt·e à…",
@@ -251,7 +282,6 @@ const Q = {
     {id:"age", type:"single", kicker:"Presque fini",
      title:"T'as quel âge ?", quip:"Juste une tranche, on ne va pas te souhaiter ton anniversaire.",
      options:[
-      {v:"moins_16", t:"Moins de 16"},
       {v:"16_17", t:"16-17"},
       {v:"18_24", t:"18-24"},
       {v:"25_34", t:"25-34"},
@@ -366,7 +396,6 @@ const Q = {
     {id:"age", type:"single", kicker:"Dernière ligne droite",
      title:"T'as quel âge ?", quip:"Juste une tranche. On n'est pas l'état civil.",
      options:[
-      {v:"moins_16", t:"Moins de 16"},
       {v:"16_17", t:"16-17"},
       {v:"18_24", t:"18-24"},
       {v:"25_34", t:"25-34"},
@@ -379,7 +408,7 @@ const Q = {
 const INTRO = TRACK === "anime" ? {
   kicker:"Sondage express · 2 minutes",
   title:"Tes animés, tes potes, le même épisode.",
-  text:"Une douzaine de clics pour nous dire comment tu regardes tes animés. Pas de nom, pas de compte, pas de filler arc.",
+  text:"Une quinzaine de clics pour nous dire comment tu regardes tes animés. Pas de nom, pas de compte, pas de filler arc.",
   cta:"C'est parti"
 } : {
   kicker:"Sondage express · 2 minutes",
@@ -388,6 +417,7 @@ const INTRO = TRACK === "anime" ? {
   cta:"J'ouvre l'enveloppe"
 };
 
+const SRC = (new URLSearchParams(location.search).get("src") || "direct").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 30) || "direct";
 const state = {i:-1, answers:{}, started:Date.now(), saved:null};
 const app = document.getElementById("app");
 const bar = document.getElementById("bar");
@@ -437,11 +467,17 @@ function nav(canNext, onNext, label="Suivant"){
 }
 
 function renderIntro(){
+  // Réservé aux 16 ans et plus (règle du 27/10) : la case doit être cochée pour commencer.
+  const box = el("input",{type:"checkbox",id:"age16"});
+  const start = el("button",{type:"button",class:"btn wide",id:"start",text:INTRO.cta,disabled:true,onclick:()=>{ state.answers.age_ok = "oui"; go(0); }});
+  box.addEventListener("change", ()=>{ start.disabled = !box.checked; });
+  const age16 = el("label",{class:"check",for:"age16"},[box, el("span",{text:"J'ai 16 ans ou plus"})]);
   app.replaceChildren(el("section",{class:"card fade"},[
     el("div",{class:"kicker",text:INTRO.kicker}),
     el("h1",{text:INTRO.title}),
     el("p",{class:"quip",text:INTRO.text}),
-    el("div",{class:"row"},[el("button",{type:"button",class:"btn wide",id:"start",text:INTRO.cta,onclick:()=>go(0)})])
+    age16,
+    el("div",{class:"row"},[start])
   ]));
 }
 
@@ -495,10 +531,14 @@ function renderQ(q){
     } else {
       const input = el("input",{type:"email",id:"email",placeholder:"ton@email.fr",autocomplete:"email",value:state.answers.email||""});
       input.addEventListener("input", ()=>{ state.answers.email = input.value.trim(); });
+      const tbox = el("input",{type:"checkbox",id:"tester",checked:state.answers.tester === "oui"});
+      tbox.addEventListener("change", ()=>{ if (tbox.checked) state.answers.tester = "oui"; else delete state.answers.tester; });
+      const tester = el("label",{class:"check",for:"tester"},[tbox, el("span",{text:"Je veux tester Cowatch"})]);
       card.append(
         el("div",{class:"kicker",text:"Bonus facultatif"}),
         el("h2",{text:"Tu veux tester Cowatch en avant-première ?"}),
         el("p",{class:"quip",text:"Laisse ton mail et on t'envoie l'accès dès que c'est prêt. Sinon, laisse vide, zéro rancune."}),
+        tester,
         input,
         nav(true, ()=>{
           const v = (state.answers.email||"").trim();
@@ -538,7 +578,7 @@ function profile(){
 
 async function save(){
   const doc = {
-    track: TRACK, v: 1, answers: {...state.answers},
+    track: TRACK, v: 2, src: SRC, answers: {...state.answers},
     duree_s: Math.round((Date.now() - state.started) / 1000)
   };
   if (doc.answers.age === "moins_16") delete doc.answers.email;
@@ -558,7 +598,7 @@ async function finish(){
   const status = el("p",{class:"note",text:"Enregistrement…"});
   const shareBtn = el("button",{type:"button",class:"btn wide",text:"Copier le lien pour ta team"});
   shareBtn.addEventListener("click", async ()=>{
-    const url = location.origin + location.pathname;
+    const url = location.origin + location.pathname + "?src=" + encodeURIComponent((SRC.replace(/-partage$/, "") + "-partage").slice(0, 30)); // un partage garde la trace de sa source
     try{ await navigator.clipboard.writeText(url); shareBtn.textContent = "Lien copié"; }
     catch(e){ shareBtn.textContent = url; }
   });
