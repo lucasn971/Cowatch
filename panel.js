@@ -25,6 +25,8 @@ function applyTheme(id) {
   }
   theme = id;
   $('#invite').textContent = t.invite; $('#chatIn').placeholder = t.placeholder;
+  const mk = document.createElement('i'); mk.className = 'mark'; mk.textContent = t.mark || '';
+  $('#logo').replaceChildren(t.logo || 'Cowatch', mk);
 }
 
 // ---------- Lien avec le moteur ----------
@@ -219,6 +221,8 @@ function buildCards() {
     const em = document.createElement('span'); em.className = 'cw-emo'; em.textContent = t.soon ? '' : t.emojis.slice(0, 3).join(' ');
     const bar = document.createElement('i'); bar.className = 'cw-acc'; bar.style.background = t.soon ? '#2A2A30' : t.accent;
     art.append(em, bar);
+    if (id === 'paddock') { const l = document.createElement('span'); l.className = 'cw-lamps'; l.innerHTML = '<i></i><i></i><i></i><i></i><i></i>'; art.append(l); } // Paddock : feux de départ
+    if (id === 'anime') { const g = document.createElement('span'); g.className = 'cw-badge'; g.textContent = 'SIMULCAST'; art.append(g); } // Anime
     const n = document.createElement('b'); n.textContent = t.soon ? `${t.name} · bientôt` : t.name;
     const d = document.createElement('span'); d.className = 'd'; d.textContent = t.desc;
     b.append(art, n, d);
@@ -258,6 +262,7 @@ $('#foldBtn').onclick = async () => {
 };
 $('#menu').addEventListener('click', e => { if (e.target.closest('button')) { $('#menu').classList.add('hidden'); $('#menuBtn').setAttribute('aria-expanded', 'false'); } }); // un choix referme le menu
 $('#mTheme').onclick = () => openChoice('change');
+$('#lightsBtn').onclick = () => { engine({ cmd: 'lights' }); const b = $('#lightsBtn'); b.disabled = true; setTimeout(() => { b.disabled = false; }, 15000); };
 $('#mCalib').onclick = () => { calibOpen = !calibOpen; if (calibOpen) $('#manual').open = true; render(); };
 
 // ---------- Affichage ----------
@@ -330,6 +335,7 @@ function render() {
   // Vestiaire : prono d'avant-match et bouton VAR
   const vest = theme === 'vestiaire';
   $('#prono').classList.toggle('hidden', !vest);
+  $('#lightsBtn').classList.toggle('hidden', theme !== 'paddock');
   if (vest) {
     // Une fois le prono donné, le bloc se replie en une ligne ; les pronos de tout le monde sont sur la vidéo (volet à gauche).
     const mine = (st.pronos || []).find(x => x.name === st.me?.name);
@@ -373,6 +379,14 @@ function addLog(m) {
     d.title = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (!same) { const b = document.createElement('b'); b.textContent = mine ? 'Toi' : m.name; d.append(b); }
     const x = document.createElement('span'); x.textContent = m.text; // jamais de HTML
+    // « /spoil … » : le message arrive flouté, on clique pour le lire (pastille ambre « spoil »).
+    const sp = /^\/spoil\b\s*/i.exec(m.text);
+    if (sp) {
+      x.textContent = m.text.slice(sp[0].length) || '…'; x.className = 'spoil'; x.tabIndex = 0; x.setAttribute('role', 'button'); x.setAttribute('aria-label', 'Spoil caché : cliquer pour lire');
+      const open = () => { x.classList.add('open'); x.removeAttribute('role'); x.removeAttribute('aria-label'); };
+      x.onclick = open; x.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') open(); };
+      const tag = document.createElement('em'); tag.className = 'spoil-tag'; tag.textContent = 'spoil'; d.append(tag);
+    }
     d.append(x); lastLog = { name: m.name, at: m.at };
   }
   $('#chat').append(d); $('#chat').scrollTop = $('#chat').scrollHeight;

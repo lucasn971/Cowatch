@@ -64,20 +64,32 @@
       card: '<span class="cw-c1" style="font:900 26px/0.85 var(--cw-display);font-stretch:62%;text-transform:uppercase">L\'arène</span><span class="cw-c2" style="display:flex;gap:3px;align-items:flex-end;height:26px"><i style="width:8px;height:40%;background:#263044"></i><i style="width:8px;height:100%;background:#D4FF3A"></i><i style="width:8px;height:70%;background:#D4FF3A"></i><i style="width:8px;height:50%;background:#3AD1FF"></i></span>',
       cardBg: '#0B0E14',
     },
-    // Manga : cible n°1, mais la couleur (Simulcast jade ou Encre) n'est pas encore tranchée → pas encore sélectionnable.
-    manga: {
-      name: 'Manga', desc: 'L\'épisode de la semaine, entre fans d\'anime et de manga.', soon: true,
-      bg: '#0E0E10', surface: '#1A1A1E', border: '#2A2A30', text: '#F2F2F0', muted: '#A9A9B0',
-      accent: '#F2F2F0', accentInk: '#0E0E10', speaking: '#F2F2F0',
-      display: "system-ui, sans-serif", body: "system-ui, sans-serif", gfont: '',
-      upper: false, radius: '8px', pill: '99px',
-      emojis: ['😭', '🔥', '💀', '🙏', '⚡', '😳'], labels: ['Larmes', 'Feu', 'Mort', 'Pitié', 'Hype', 'Gêne'],
-      invite: 'Inviter quelqu\'un', placeholder: 'Écris un message…', groupWord: 'Le groupe',
-      card: '<span class="cw-c1" style="font:700 15px system-ui;opacity:.7">Bientôt</span>',
-      cardBg: 'linear-gradient(180deg, #1A1A1E 0%, #0E0E10 100%)',
+    // Anime (ex-« Manga ») : piste Simulcast jade retenue sur l'écran de choix de la planche Design (26/10).
+    anime: {
+      name: 'Anime', desc: 'L\'épisode de la semaine, entre fans d\'anime et de manga.',
+      bg: '#070C0A', surface: '#121E19', border: '#21302A', text: '#EEF5F2', muted: '#AEC3BA',
+      accent: '#19D3A6', accentInk: '#04120D', speaking: '#5FE8C6', spoil: '#FFB547',
+      display: "Unbounded, system-ui, sans-serif", body: "'M PLUS 1p', system-ui, sans-serif",
+      gfont: 'family=Unbounded:wght@600;700;800&family=M+PLUS+1p:wght@400;500;700',
+      upper: false, radius: '12px', pill: '99px', logo: 'cowatch', mark: '.',
+      emojis: ['😭', '🔥', '💀', '🙏', '⚡', '😳'], labels: ['Pleurs', 'Feu', 'Mort', 'Merci', 'Éclair', 'Gêne'],
+      invite: 'Inviter quelqu\'un', placeholder: 'Écris… (/spoil pour flouter)', groupWord: 'Le groupe',
+      cardBg: 'radial-gradient(circle, rgba(25,211,166,.22) 1px, transparent 1.5px) 0 0/9px 9px, linear-gradient(180deg, #0E1A16 0%, #070C0A 100%)',
+    },
+    // Paddock : Grands Prix et sport auto (planche Design page 3). Le rouge n'existe que dans les feux de départ.
+    paddock: {
+      name: 'Paddock', desc: 'Les Grands Prix, F1 et sport auto. Feux de départ, radio, drapeaux.',
+      bg: '#0D0E10', surface: '#17191D', border: '#22252A', text: '#F4F4F2', muted: '#9A9DA4',
+      accent: '#FFD400', accentInk: '#0D0E10', speaking: '#2BD96B',
+      display: "'Saira Condensed', 'Arial Narrow', system-ui, sans-serif", body: "Inter, system-ui, sans-serif", skew: true,
+      gfont: 'family=Saira+Condensed:wght@700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700',
+      upper: true, radius: '6px', pill: '6px', logo: 'Cowatch', mark: '/',
+      emojis: ['🏎️', '🔥', '😱', '🟡', '🏁', '🍾'], labels: ['Voiture', 'Feu', 'Choc', 'Drapeau jaune', 'Drapeau à damier', 'Podium'],
+      invite: 'Inviter au paddock', placeholder: 'Message radio…', groupWord: 'Le paddock',
+      cardBg: 'repeating-linear-gradient(45deg, rgba(255,255,255,.03) 0 2px, transparent 2px 6px), linear-gradient(180deg, #17191D 0%, #0D0E10 100%)',
     },
   };
-  const ORDER = ['vestiaire', 'salle', 'canape', 'live', 'arene', 'manga'];
+  const ORDER = ['vestiaire', 'salle', 'canape', 'live', 'arene', 'anime', 'paddock'];
   const DEFAULT = 'vestiaire';
   const get = id => THEMES[id] && !THEMES[id].soon ? THEMES[id] : THEMES[DEFAULT];
   // Variables CSS d'une ambiance (préfixe --cw-), appliquées au panneau et aux surcouches.
@@ -86,7 +98,7 @@
     return { '--cw-bg': t.bg, '--cw-surface': t.surface, '--cw-border': t.border, '--cw-text': t.text, '--cw-muted': t.muted,
       '--cw-accent': t.accent, '--cw-accent-ink': t.accentInk, '--cw-speaking': t.speaking, '--cw-display': t.display, '--cw-body': t.body,
       '--cw-radius': t.radius, '--cw-pill': t.pill, '--cw-upper': t.upper ? 'uppercase' : 'none', '--cw-italic': t.displayItalic ? 'italic' : 'normal',
-      '--cw-stretch': t.displayStretch || 'normal' };
+      '--cw-stretch': t.displayStretch || 'normal', '--cw-skew': t.skew ? 'skewX(-8deg)' : 'none' };
   }
   const api = { THEMES, ORDER, DEFAULT, get, vars, valid: id => !!THEMES[id] && !THEMES[id].soon };
   if (typeof module !== 'undefined') module.exports = api; else self.CowatchThemes = api;

@@ -81,6 +81,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     openPanelFor(sender.tab).then(where => reply({ ok: true, where })).catch(e => reply({ ok: false, error: String(e) }));
     return true;
   }
+  // Polices d'ambiance pour les surcouches sur la vidéo : le service worker les télécharge (Google Fonts, sous-ensemble latin)
+  // et les passe au lecteur en octets — la page du site ne peut donc pas les bloquer.
+  if (msg.cmd === 'gfont' && typeof msg.q === 'string' && /^[\w+:;@,.=&-]+$/.test(msg.q)) { gfont(msg.q).then(reply, () => reply([])); return true; }
   if (msg.cmd === 'panelState' && sender.tab) { reply({ open: openPanels.has(sender.tab.id) }); return; }
   if (msg.to !== 'bg') return;
   if (msg.cmd === 'ensureEngine') { ensureEngine().then(ok => reply({ ok })).catch(e => reply({ ok: false, error: String(e) })); return true; }
@@ -92,3 +95,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
 // Raccourci clavier (Alt+Maj+M) : couper / réactiver le micro, même en plein écran.
 chrome.commands?.onCommand.addListener(cmd => { if (cmd === 'toggle-mic') chrome.runtime.sendMessage({ to: 'engine', cmd: 'mute', toast: true }).catch(() => {}); });
+
+const fontCache = new Map();
+function gfont(q) {
+  if (!fontCache.has(q)) fontCache.set(q, (async () => {
+    const css = await (await fetch(`https://fonts.googleapis.com/css2?${q}&display=swap`)).text();
+    const out = [];
+    for (const m of css.matchAll(/\/\*\s*latin\s*\*\/\s*@font-face\s*{([^}]*)}/g)) {
+      const b = m[1], g = re => (re.exec(b) || [])[1];
+      const url = g(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/); if (!url) continue;
+      const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      out.push({ family: g(/font-family:\s*'([^']+)'/), weight: g(/font-weight:\s*([\d ]+)/), style: g(/font-style:\s*(\w+)/) || 'normal', range: g(/unicode-range:\s*([^;]+)/), data: btoa(bin) });
+    }
+    return out;
+  })().catch(e => { fontCache.delete(q); throw e; }));
+  return fontCache.get(q);
+}

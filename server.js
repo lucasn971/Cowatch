@@ -158,7 +158,7 @@ function buildRecap(md, score) {
     reactions: md.nReact, messages: md.nChat, duree: Math.round((Date.now() - md.start) / 60000), at: Date.now() };
 }
 // Ambiances (voir themes.js) : choisie par celui qui crée le salon, la même pour tous, modifiable par lui seul.
-const THEMES = new Set(['vestiaire', 'salle', 'canape', 'live', 'arene']);
+const THEMES = new Set(['vestiaire', 'salle', 'canape', 'live', 'arene', 'anime', 'paddock']);
 const pronosOf = room => [...metaOf(room).pronos.entries()].map(([name, score]) => ({ name, score }));
 const PRONO_RE = /^\d{1,2}-\d{1,2}$/;
 // Position de la vidéo jointe aux réactions et au BUUUT : chacun l'affiche quand ce moment arrive dans SA vidéo (zéro spoil).
@@ -351,6 +351,13 @@ function handle(conn) {
         broadcast(me.room, { t: 'reaction', from: me.id, name: me.name, emoji, ...at });
         break;
       }
+      case 'lights': { // Paddock : feux de départ lancés par quelqu'un, affichés chez chacun au même moment de SA vidéo (une fois / 15 s)
+        const md = metaOf(me.room), now = Date.now();
+        if (md.theme !== 'paddock' || now - (md.lightsAt || 0) < 15000) break;
+        md.lightsAt = now; STATS.count(me.room, 'feux');
+        broadcast(me.room, { t: 'lights', by: me.name, from: me.id, ...cleanPos(m) });
+        break;
+      }
       case 'goal-cancel': { // VAR : but refusé (dans les 20 s)
         const md = metaOf(me.room);
         if (!md.goal || md.goal.id !== m.id || Date.now() - md.goal.at > 20000) break;
@@ -407,7 +414,7 @@ function handle(conn) {
         if (!text) break;
         const msg = { t: 'chat', name: me.name, text, at: Date.now() };
         const h = metaOf(me.room).chat; h.push(msg); if (h.length > CHAT_HISTORY) h.shift(); metaOf(me.room).nChat++;
-        stats.chats = (stats.chats || 0) + 1; STATS.count(me.room, 'messages');
+        stats.chats = (stats.chats || 0) + 1; STATS.count(me.room, 'messages'); if (/^\/spoil\b/i.test(text)) STATS.count(me.room, 'spoils');
         broadcast(me.room, msg);
         break;
       }

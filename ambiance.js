@@ -35,7 +35,7 @@ require('fs').mkdirSync(SHOTS, { recursive: true });
 
   // --- Lucas crée le salon en choisissant « Soirée canapé » ---
   await A.p.click('#create'); await A.p.screenshot({ path: `${SHOTS}/choix.png` });
-  ok(await A.p.locator('.card[data-id="manga"][aria-disabled="true"]').count() === 1, 'Manga affiché « bientôt » (couleur pas encore tranchée)');
+  ok(await A.p.locator('.card[data-id="anime"]:not([aria-disabled])').count() === 1 && await A.p.locator('.card[data-id="paddock"]').count() === 1, 'Anime et Paddock proposés');
   await A.p.click('.card[data-id="canape"]');
   ok((await A.p.textContent('#pickedName')) === 'Soirée canapé', 'choix : Soirée canapé');
   await A.p.click('#go'); await A.p.waitForSelector('#room:not(.hidden)');
@@ -53,7 +53,7 @@ require('fs').mkdirSync(SHOTS, { recursive: true });
   await A.p.screenshot({ path: `${SHOTS}/panneau-canape.png` });
 
   // Captures de chaque ambiance (pour validation), puis retour au Vestiaire
-  for (const id of ['salle', 'live', 'arene', 'vestiaire']) {
+  for (const id of ['salle', 'live', 'arene', 'anime', 'paddock', 'vestiaire']) {
     await A.p.click('#menuBtn'); await A.p.click('#mTheme'); await A.p.click(`.card[data-id="${id}"]`); await A.p.click('#go');
     await until(() => B.p.evaluate(i => document.documentElement.dataset.theme === i, id));
     await sleep(700); await A.p.screenshot({ path: `${SHOTS}/panneau-${id}.png` });

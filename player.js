@@ -223,7 +223,17 @@
   // Polices du Vestiaire, fournies avec l'extension (chargées en mémoire : la page ne peut pas les bloquer).
   const fontsDone = new Set();
   function loadFonts() {
-    if (theme !== 'vestiaire' || fontsDone.has(theme)) return; fontsDone.add(theme);
+    if (fontsDone.has(theme)) return; fontsDone.add(theme);
+    if (theme !== 'vestiaire') { // autres ambiances : polices Google demandées au service worker, reçues en octets
+      const q = th().gfont; if (!q) return;
+      chrome.runtime.sendMessage({ cmd: 'gfont', q }).then(list => {
+        for (const f of list || []) {
+          try { const bin = atob(f.data), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+            new FontFace(f.family, u, { weight: f.weight || '400', style: f.style, unicodeRange: f.range || undefined }).load().then(ff => document.fonts.add(ff)).catch(() => {}); } catch {}
+        }
+      }).catch(() => {});
+      return;
+    }
     const list = [['Barlow Condensed', '800', 'BarlowCondensed-ExtraBold'], ['Barlow Condensed', '700', 'BarlowCondensed-Bold'], ['Barlow', '600', 'Barlow-SemiBold'], ['Barlow', '400', 'Barlow-Regular']];
     for (const [fam, w, f] of list) fetch(chrome.runtime.getURL(`fonts/${f}.woff`)).then(r => r.arrayBuffer()).then(buf => { const ff = new FontFace(fam, buf, { weight: w }); return ff.load(); }).then(ff => document.fonts.add(ff)).catch(() => {});
   }
@@ -267,13 +277,24 @@
   function colorOf(name) { let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % 360; return h; }
   function faceLayer() {
     // Vestiaire : le prono occupe le haut à gauche, celui qui parle passe en bas à gauche (maquette D3).
-    const bottom = theme === 'vestiaire';
+    const bottom = theme === 'vestiaire' || theme === 'paddock'; // Paddock : la radio en bas à gauche (maquette G3)
     const box = layer('cowatch-faces', 'display:flex;flex-direction:column;align-items:flex-start;gap:10px');
     if (box) { box.style.left = '24px'; box.style.top = bottom ? 'auto' : '24px'; box.style.bottom = bottom ? '28px' : 'auto'; box.style.font = `600 14px ${th().body}`; }
     return box;
   }
   function faceEl(p) {
     const t = th(), w = document.createElement('div'); w.dataset.id = p.id;
+    if (theme === 'paddock') { // Paddock : celui qui parle apparaît comme un message radio d'équipe, avec son onde
+      w.style.cssText = `display:flex;align-items:center;gap:12px;background:rgba(5,5,6,.88);color:${t.text};border-left:4px solid ${t.accent};padding:10px 16px 10px 12px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(-8px)`;
+      const r = document.createElement('span'); r.textContent = 'RADIO'; r.style.cssText = `font:500 12px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.12em;color:${t.accent}`;
+      const n = document.createElement('b'); n.textContent = p.self ? 'Toi' : p.name; n.style.fontSize = '15px';
+      const wave = document.createElement('span'); wave.style.cssText = 'display:flex;align-items:center;gap:3px;height:20px';
+      [0, .1, .2, .3, .15].forEach(dl => {
+        const bar = document.createElement('i'); bar.style.cssText = `width:3px;height:100%;background:${t.text};transform-origin:center`; wave.append(bar);
+        if (!calm()) bar.animate([{ transform: 'scaleY(.3)' }, { transform: 'scaleY(1)' }, { transform: 'scaleY(.3)' }], { duration: 600, delay: dl * 1000, iterations: Infinity, easing: 'ease-in-out' });
+      });
+      w.append(r, n, wave); return w;
+    }
     w.style.cssText = `display:flex;align-items:center;gap:10px;background:${rgba(t.bg, .74)};color:${t.text};border-radius:99px;padding:6px 16px 6px 6px;transition:opacity .25s,transform .25s;opacity:0;transform:translateX(-8px)`;
     let pic;
     if (p.avatar) { pic = document.createElement('img'); pic.src = p.avatar; pic.alt = ''; pic.style.objectFit = 'cover'; }
@@ -319,7 +340,15 @@
     d.style.cssText = `color:${t.text};background:${rgba(t.bg, .62)};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:8px 12px;border-radius:12px;font:14px/1.35 ${t.body};word-wrap:break-word;max-width:100%`;
     const b = document.createElement('b'); b.textContent = (p && p.self ? 'Toi' : name) + ' ';
     const x = document.createElement('span'); x.textContent = text;
-    d.append(b, x); box.append(d);
+    const sp = /^\/spoil\b\s*/i.exec(text); // spoil : flouté sur la vidéo aussi (on le lit en cliquant dans le panneau)
+    d.append(b);
+    if (sp) {
+      x.textContent = text.slice(sp[0].length) || '…'; x.style.filter = 'blur(6px)';
+      const g = document.createElement('em'); g.textContent = 'SPOIL';
+      g.style.cssText = `font:700 10px ${t.body};font-style:normal;letter-spacing:.08em;color:#1A1206;background:${t.spoil || '#FFB547'};border-radius:4px;padding:1px 5px;margin-right:6px`;
+      d.append(g);
+    }
+    d.append(x); box.append(d);
     if (!calm()) d.animate([{ opacity: 0, transform: 'translateX(20px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
     while (box.children.length > 5) box.firstChild.remove();
     setTimeout(() => { const f = d.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }); f.onfinish = () => d.remove(); }, 6000);
@@ -344,6 +373,7 @@
   function reactLayer() { return layer('cowatch-react', 'inset:0;overflow:hidden'); }
   function showReaction(name, emoji) {
     const box = reactLayer(); if (!box) return;
+    if (theme === 'anime') notePeak(name); else if (theme === 'paddock') noteFlag(emoji);
     const t = th(), now = Date.now();
     let g = groups.get(emoji);
     if (g && now - g.last < 1500 && g.el.isConnected) { // même émoji en même temps : une seule bulle qui grossit
@@ -396,6 +426,67 @@
         : d.animate([{ transform: 'translate(0,0) rotate(0deg)', opacity: 0 }, { opacity: 1, offset: .12 }, { transform: `translate(${sway}px,${fall}px) rotate(${(Math.random() - .5) * 60}deg)`, opacity: 0 }], { duration: 2200 + Math.random() * 1200, delay, easing: 'cubic-bezier(.3,.6,.6,1)' });
       a.onfinish = () => d.remove();
     }
+  }
+  // ---------- Anime : PEAK, quand tout le monde réagit en même temps (une fois, lignes de vitesse 0,6 s) ----------
+  const peakSeen = new Map(); let peakAt = 0;
+  function notePeak(name) {
+    const now = Date.now(); peakSeen.set(name, now);
+    for (const [k, v] of peakSeen) if (now - v > 3000) peakSeen.delete(k);
+    const need = Math.max(2, roster.size || 0);
+    if (peakSeen.size < need || now - peakAt < 30000) return;
+    peakAt = now; peakSeen.clear(); showPeak();
+  }
+  function showPeak() {
+    const box = layer('cowatch-peak', 'inset:0;display:grid;place-items:center;overflow:hidden'); if (!box) return;
+    const t = th(); box.replaceChildren();
+    const lines = document.createElement('div');
+    lines.style.cssText = `position:absolute;inset:-20%;background:repeating-conic-gradient(from 0deg at 50% 50%, ${rgba(t.text, .16)} 0deg 1.2deg, transparent 1.2deg 9deg);-webkit-mask:radial-gradient(circle, transparent 22%, #000 60%);mask:radial-gradient(circle, transparent 22%, #000 60%)`;
+    const word = document.createElement('div'); word.textContent = 'PEAK';
+    word.style.cssText = `position:relative;font:800 min(18vw,170px)/1 ${t.display};letter-spacing:.04em;color:${t.accent};text-shadow:0 6px 40px rgba(0,0,0,.6)`;
+    box.append(lines, word);
+    if (calm()) { setTimeout(() => box.replaceChildren(), 1500); return; }
+    lines.animate([{ opacity: 0, transform: 'scale(1.15)' }, { opacity: 1, transform: 'scale(1)', offset: .25 }, { opacity: 0, transform: 'scale(.95)' }], { duration: 600, easing: 'ease-out' });
+    const a = word.animate([{ opacity: 0, transform: 'scale(.6) skewX(-10deg)' }, { opacity: 1, transform: 'scale(1.05) skewX(-10deg)', offset: .2 }, { opacity: 1, transform: 'scale(1) skewX(-10deg)', offset: .75 }, { opacity: 0, transform: 'scale(1.1) skewX(-10deg)' }], { duration: 1400, easing: 'ease-out' });
+    a.onfinish = () => box.replaceChildren();
+  }
+
+  // ---------- Paddock : moments drapeau en bandeau, et feux de départ ----------
+  const flagAt = {};
+  function noteFlag(emoji) {
+    const kind = emoji === '🏁' ? 'damier' : emoji === '🟡' ? 'jaune' : null; if (!kind) return;
+    const now = Date.now(); if (now - (flagAt[kind] || 0) < 8000) return; flagAt[kind] = now;
+    const box = layer('cowatch-flag', 'left:0;right:0;top:0;display:flex;justify-content:center'); if (!box) return;
+    const t = th(), band = document.createElement('div');
+    const lab = document.createElement('span'); lab.textContent = kind === 'damier' ? 'Drapeau à damier' : 'Drapeau jaune';
+    lab.style.cssText = `display:inline-block;font:900 26px ${t.display};text-transform:uppercase;letter-spacing:.04em;transform:skewX(-8deg);padding:4px 18px;` + (kind === 'damier' ? `background:${t.bg};color:${t.text}` : `color:${t.accentInk}`);
+    band.style.cssText = 'width:100%;display:flex;justify-content:center;align-items:center;padding:6px 0;' + (kind === 'damier'
+      ? 'background:conic-gradient(#F4F4F2 25%, #0D0E10 0 50%, #F4F4F2 0 75%, #0D0E10 0) 0 0/24px 24px'
+      : `background:${t.accent}`);
+    band.append(lab); box.replaceChildren(band);
+    const show = calm() ? null : band.animate([{ transform: 'translateY(-100%)' }, { transform: 'none' }], { duration: 300, easing: 'ease-out' });
+    setTimeout(() => { if (box.firstChild !== band) return; const f = calm() ? null : band.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400 }); if (f) f.onfinish = () => band.remove(); else band.remove(); }, 3000);
+  }
+  function onLights(m) {
+    if (theme !== 'paddock') return;
+    const ms = waitFor(m); setTimeout(showLights, ms || 0);
+  }
+  function showLights() {
+    const box = layer('cowatch-lights', 'inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px'); if (!box) return;
+    const t = th(); box.replaceChildren();
+    const rack = document.createElement('div'); rack.style.cssText = 'display:flex;gap:18px;background:rgba(5,5,6,.9);border-radius:14px;padding:18px 24px';
+    const lamps = [0, 1, 2, 3, 4].map(() => { const l = document.createElement('span'); l.style.cssText = 'width:min(62px,7vw);height:min(62px,7vw);border-radius:50%;background:#3A1214'; rack.append(l); return l; });
+    const go = document.createElement('div'); go.textContent = 'Extinction des feux !';
+    go.style.cssText = `font:900 min(9vw,120px)/0.9 ${t.display};text-transform:uppercase;color:${t.text};text-shadow:0 8px 40px rgba(0,0,0,.6);transform:skewX(-8deg);opacity:0;text-align:center;white-space:nowrap`;
+    box.append(rack, go);
+    const fit = () => { const w = go.scrollWidth, max = box.clientWidth * .92; if (w > max) go.style.fontSize = `${parseFloat(getComputedStyle(go).fontSize) * max / w}px`; };
+    fit(); document.fonts?.ready.then(fit);
+    lamps.forEach((l, i) => setTimeout(() => { l.style.background = '#E5262B'; l.style.boxShadow = '0 0 22px rgba(229,38,43,.9)'; }, i * 1000));
+    setTimeout(() => { // feux éteints : c'est parti
+      lamps.forEach(l => { l.style.background = '#3A1214'; l.style.boxShadow = 'none'; });
+      go.style.opacity = '1';
+      if (!calm()) go.animate([{ opacity: 0, transform: 'skewX(-8deg) translateX(-60px)' }, { opacity: 1, transform: 'skewX(-8deg) translateX(0)' }], { duration: 250, easing: 'cubic-bezier(.2,.9,.3,1)' });
+      setTimeout(() => box.replaceChildren(), 1800);
+    }, 5000 + 600);
   }
   function onReaction(m) {
     const ms = waitFor(m);
@@ -569,6 +660,7 @@
     else if (m.t === 'state-request') emit(video && !video.paused ? 'state' : 'pause');
     else if (m.t === 'sync') { apply(m); if (m.action !== 'state') banner(`${m.name} : ${{ play: '▶ lecture', pause: '⏸ pause', seek: '⏩ avance' }[m.action] || m.action}`); }
     else if (m.t === 'reaction') onReaction(m);
+    else if (m.t === 'lights') onLights(m);
     else if (m.t === 'goal') onGoal(m);
     else if (m.t === 'goal-cancel') onGoalCancel(m);
     else if (m.t === 'theme') setTheme(m.theme);

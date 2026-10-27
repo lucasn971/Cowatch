@@ -134,6 +134,7 @@
         break;
       }
       case 'reaction': sendS({ t: 'reaction', emoji: m.emoji, ...posNow() }); break;
+      case 'lights': sendS({ t: 'lights', ...posNow() }); break;
       case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); sendS({ t: 'mute', muted: S.muted }); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
       case 'theme': if (S.code) sendS({ t: 'theme', theme: m.theme }); else wantTheme = m.theme; break;
       case 'prono': sendS({ t: 'prono', score: m.score }); break;
@@ -288,6 +289,7 @@
       if (m.t === 'mute') { const p = peers.get(m.id); if (p) { p.muted = !!m.muted; pushRoster(); snap(); } }
       if (m.t === 'unstable') { const p = peers.get(m.id); if (p) { p.unstable = !!m.on; snap(); } }
       if (m.t === 'theme') { S.theme = m.theme; if (lastWelcome) lastWelcome.theme = m.theme; sys(`Ambiance : ${(self.CowatchThemes?.THEMES[m.theme] || {}).name || m.theme}`); pushRoster(); snap(); }
+      if (m.t === 'lights') sys(`🚦 ${m.by} lance les feux de départ`);
       if (m.t === 'pronos') { S.pronos = m.items || []; pushRoster(); snap(); }
       if (m.t === 'recap') { const fresh = !S.recap || S.recap.at !== m.at; S.recap = m; trace('récap', m.score || 'sans score'); if (fresh && Date.now() - m.at < 60000) sys('Récap de la soirée'); snap(); }
       if (m.t === 'goal' && m.from === S.me.id) { // c'est moi qui ai crié : je peux annuler (VAR) pendant 20 s
@@ -328,7 +330,7 @@
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { retryP = 0; setTimeout(autoMode, 300); lastWelcome = { t: 'welcome', id: m.id, host: m.host, offset: m.serverTime - Date.now(), mode: m.mode, theme: m.theme || S.theme }; toTab(welcomeNow()); pushRoster(); }
       else if (m.t === 'host') { if (lastWelcome) lastWelcome.host = m.id; toTab(m); }
-      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme', 'recap'].includes(m.t)) toTab(m);
+      else if (['sync', 'state-request', 'mode', 'align', 'chat', 'reaction', 'goal', 'goal-cancel', 'theme', 'recap', 'lights'].includes(m.t)) toTab(m);
     };
   }
   // Mode choisi automatiquement : direct (match) ou replay / série, selon la vidéo de l'onglet.

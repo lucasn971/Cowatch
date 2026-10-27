@@ -128,3 +128,25 @@ section { padding: 6px 16px 16px; display: flex; flex-direction: column }
 /* Accord statistiques (phase de test) */
 .consent { margin-top: 14px } .consent .row { justify-content: flex-start }
 .peer.unstable .tag { color: #FFD27A }
+
+/* ---------- Anime (Simulcast jade) et Paddock (planche Design du 26/10) ---------- */
+.logo .mark { font-style: normal; color: var(--cw-accent) }
+html[data-theme="anime"] .logo { text-transform: none; letter-spacing: 0; font-weight: 800 }
+html[data-theme="paddock"] .logo, html[data-theme="paddock"] .now-title { display: inline-block; transform: var(--cw-skew); transform-origin: left; font-weight: 900 }
+html[data-theme="paddock"] .logo { font-size: 24px; letter-spacing: .02em }
+html[data-theme="paddock"] .kicker { font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 500; letter-spacing: .1em }
+html[data-theme="paddock"] .sys { border-radius: 0; border: 0; border-left: 3px solid var(--cw-accent); background: var(--cw-surface) }
+/* Spoil flouté : on clique pour lire. */
+.spoil { filter: blur(5px); cursor: pointer; user-select: none; transition: filter .2s }
+.spoil.open { filter: none; user-select: auto; cursor: auto }
+.spoil-tag { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #1A1206; background: #FFB547; border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px }
+/* Paddock : bouton des feux de départ */
+.lights { display: flex; align-items: center; gap: 10px; width: 100%; background: #050506; color: var(--cw-text); border-left: 4px solid var(--cw-accent); border-radius: 0; font: 800 15px var(--cw-display); text-transform: uppercase; letter-spacing: .04em; min-height: 44px }
+.lights:disabled { opacity: .5; cursor: default }
+.lights .lamps, .card .art .cw-lamps { display: flex; gap: 4px }
+.lights .lamps i, .card .art .cw-lamps i { width: 10px; height: 10px; border-radius: 50%; background: #3A1214 }
+.lights .lamps i:nth-child(-n+3), .card .art .cw-lamps i:nth-child(-n+3) { background: #E5262B; box-shadow: 0 0 6px rgba(229,38,43,.7) }
+.card .art .cw-lamps { position: absolute; left: 8px; top: 8px; background: #050506; padding: 3px 5px; border-radius: 4px }
+.card .art .cw-lamps i { width: 6px; height: 6px }
+.card .art .cw-badge { position: absolute; left: 8px; top: 8px; font: 700 8px Unbounded, system-ui, sans-serif; letter-spacing: .08em; color: #19D3A6; background: #04120D; padding: 2px 5px; border-radius: 4px }
+@media (prefers-reduced-motion: reduce) { .spoil { transition: none } }

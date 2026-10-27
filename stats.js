@@ -22,7 +22,7 @@ function sess(room) {
   let s = sessions.get(room);
   if (!s) {
     s = { id: crypto.randomBytes(5).toString('hex'), start: Date.now(), end: null, theme: '', modes: new Set(), people: new Map(),
-      peakSalon: 0, peakPlayers: 0, n: { reactions: 0, messages: 0, buts: 0, var: 0, pronos: 0, recaps: 0, calages: 0, calagesBloques: 0, reconnexions: 0, themes: 0 },
+      peakSalon: 0, peakPlayers: 0, n: { reactions: 0, messages: 0, buts: 0, var: 0, pronos: 0, recaps: 0, feux: 0, spoils: 0, calages: 0, calagesBloques: 0, reconnexions: 0, themes: 0 },
       maxEcart: 0, events: [], timer: null, owner: '', multiSince: 0, multiMs: 0, lastLeave: 0, rpm: new Map() };
     sessions.set(room, s);
   }
