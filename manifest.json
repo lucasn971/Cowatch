@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Cowatch — regarder ensemble",
   "version": "0.9.3",
-  "description": "Regardez Canal+, Paramount+ ou TF1+ à plusieurs à distance : voix, chat, réactions et lecture synchronisée.",
+  "description": "Regardez Netflix, Prime Video, Canal+, TF1+ ou Disney+ ensemble à distance : voix, chat, réactions et vidéo calée pour tous.",
   "permissions": [
     "storage",
     "tabs",
