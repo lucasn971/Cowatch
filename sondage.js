@@ -21,6 +21,17 @@ fs.mkdirSync(SHOTS, { recursive: true });
     const title = await p.textContent('h2'); seen.push(title);
     if (/Android ou|Ton téléphone/.test(title)) await p.screenshot({ path: `${SHOTS}/sondage-telephone.png` });
     if (await p.$('#email')) break;
+    if (/utilises déjà quelque chose/.test(title)) { // question « outils » (28/10)
+      const opt = t => p.locator('.opt', { hasText: t });
+      await opt('Autre').click(); await p.fill('#outils_autre', 'Kast');
+      await opt('Rien').click();
+      ok((await p.$$('.opt[aria-pressed="true"]')).length === 1 && !(await p.$('#outils_autre')), '« Rien » retire les autres choix et le champ « Autre »');
+      await opt('Discord').click();
+      ok(await opt('Rien').getAttribute('aria-pressed') === 'false', 'cocher Discord retire « Rien »');
+      await opt('Autre').click(); await p.fill('#outils_autre', 'Kast');
+      await p.screenshot({ path: `${SHOTS}/sondage-outils.png` });
+      await p.click('.btn.wide'); await sleep(350); continue;
+    }
     const multi = await p.$('.hint:not(.row .hint)');
     if (await p.$('.pitch')) { await p.click('.btn.wide'); }
     else if (multi && !(await p.$('.scale'))) { await p.click('.opt >> nth=0'); await p.click('.btn.wide'); }
@@ -29,6 +40,7 @@ fs.mkdirSync(SHOTS, { recursive: true });
   }
   const all = seen.join(' | ');
   ok(/téléphone/i.test(all), 'question « Ton téléphone » posée');
+  { const k = seen.findIndex(t => /Tu regardes plutôt/.test(t)); ok(k >= 0 && /utilises déjà/.test(seen[k + 1] || ''), 'question « outils » juste après « Tu regardes plutôt… »'); }
   ok(/lu le manga/.test(all) && /spoiler/.test(all) && /salle d'attente/.test(all), 'questions manga lu, spoil et salle d\'attente posées');
   ok(!(await p.content()).includes('Moins de 16'), 'plus de tranche « moins de 16 »');
   await p.check('#tester'); await p.fill('#email', '');
@@ -43,6 +55,7 @@ fs.mkdirSync(SHOTS, { recursive: true });
   ok(d.src === 'discord-awfr' && d.v === 2, `source du lien gardée (src=${d.src}, v=${d.v})`);
   const a = d.answers || {};
   ok(a.telephone === 'android' && a.manga_lu && a.spoil_subi && a.salle_attente, 'nouvelles réponses reçues par le serveur');
+  ok(JSON.stringify(a.outils) === '["discord","autre"]' && a.outils_autre === 'Kast', `outils reçus (${JSON.stringify(a.outils)}, ${a.outils_autre})`);
   ok(a.tester === 'oui' && a.age_ok === 'oui', 'case « je veux tester » et « 16 ans ou plus » reçues');
   await p.evaluate(() => navigator.clipboard && 0);
   const share = await p.evaluate(() => { let u = ''; navigator.clipboard.writeText = async x => { u = x; }; document.querySelector('.btn.wide').click(); return new Promise(r => setTimeout(() => r(u), 200)); });

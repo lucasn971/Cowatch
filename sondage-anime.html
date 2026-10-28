@@ -94,7 +94,7 @@ h2{font-size:clamp(21px,5.4vw,26px)}
   border-radius:16px; padding:16px; background:var(--surface-2); display:grid; gap:10px;
 }
 .pitch ul{margin:0; padding-left:1.1em; display:grid; gap:6px}
-input[type="email"]{
+input[type="email"],input.autre{
   font:inherit; width:100%; padding:14px; border-radius:14px; border:2px solid var(--line);
   background:var(--surface-2); color:var(--fg);
 }
@@ -194,6 +194,17 @@ const Q = {
       {v:"meme_piece", ic:"🛋️", t:"Avec un·e pote ou un·e coloc", s:"Dans la même pièce"},
       {v:"distance", ic:"🎧", t:"À distance avec des potes", s:"Appel, Discord, messages"},
       {v:"depend", ic:"🎲", t:"Ça dépend des jours"}
+     ]},
+    {id:"outils", type:"multi", kicker:"Tes outils",
+     title:"Pour regarder un anime à plusieurs à distance, tu utilises déjà quelque chose ?",
+     quip:"Plusieurs réponses possibles.",
+     options:[
+      {v:"discord", ic:"🎮", t:"Discord", s:"Partage d'écran"},
+      {v:"teleparty", ic:"🍿", t:"Teleparty"},
+      {v:"rave", ic:"🌀", t:"Rave"},
+      {v:"anidachi", ic:"🍥", t:"AniDachi"},
+      {v:"autre", ic:"✏️", t:"Autre", other:true},
+      {v:"rien", ic:"🙅", t:"Rien", s:"Je ne regarde pas à plusieurs à distance", excl:true}
      ]},
     {id:"pendant", type:"multi", kicker:"Pendant l'épisode",
      title:"Pendant un épisode, il t'arrive de…",
@@ -496,9 +507,19 @@ function renderQ(q){
     const opts = el("div",{class:"opts"+(q.grid?" grid2":"")});
     q.options.forEach(o => opts.append(optButton(o, cur.includes(o.v), () => {
       let next = cur.includes(o.v) ? cur.filter(x=>x!==o.v) : cur.concat(o.v);
+      // option exclusive (« Rien ») : elle retire les autres, et inversement
+      if (!cur.includes(o.v)) next = o.excl ? [o.v] : next.filter(x => !(q.options.find(p=>p.v===x)||{}).excl);
       if (q.max && next.length > q.max) next = next.slice(next.length - q.max);
+      const oth = q.options.find(p=>p.other);
+      if (oth && !next.includes(oth.v)) delete state.answers[q.id+"_autre"];
       state.answers[q.id] = next; renderQ(q);
     })));
+    const oth = q.options.find(p=>p.other);
+    if (oth && cur.includes(oth.v)){
+      const box = el("input",{type:"text",class:"autre",id:q.id+"_autre",maxlength:"40",placeholder:"Lequel ?","aria-label":"Autre : lequel ?",value:state.answers[q.id+"_autre"]||""});
+      box.addEventListener("input", ()=>{ const v = box.value.trim().slice(0,40); if (v) state.answers[q.id+"_autre"] = v; else delete state.answers[q.id+"_autre"]; });
+      opts.append(box);
+    }
     const hint = q.max ? `${cur.length}/${q.max} choisis` : (cur.length ? `${cur.length} choisi${cur.length>1?"s":""}` : "Choisis au moins une réponse");
     card.append(...head(q), opts, el("div",{class:"hint",text:hint}), nav(cur.length>0, ()=>go(state.i+1)));
   } else if (q.type === "scale"){
