@@ -154,7 +154,7 @@ $('#joinBtn').onclick = () => {
   if (join(c, 'join') !== false) openTarget(targetFrom(v)); // lien collé : on ouvre aussi la page que regarde celui qui invite
 };
 // Page de la plateforme jointe au lien d'invitation (…/j/CODE?u=…) : seulement les sites où Cowatch fonctionne.
-const SITES = ['netflix.com', 'primevideo.com', 'amazon.fr', 'amazon.com', 'disneyplus.com', 'canalplus.com', 'tf1.fr', 'paramountplus.com', 'youtube.com'];
+const SITES = ['netflix.com', 'primevideo.com', 'amazon.fr', 'amazon.com', 'disneyplus.com', 'canalplus.com', 'tf1.fr', 'paramountplus.com', 'youtube.com', 'crunchyroll.com', 'animationdigitalnetwork.fr', 'animationdigitalnetwork.com'];
 function targetFrom(v) {
   try {
     const u = new URL(new URL(String(v || '').trim()).searchParams.get('u') || '');
@@ -274,7 +274,7 @@ function avatarEl(name, src) {
 function renderTag(el) { const tag = el.querySelector('.tag'); if (tag) tag.textContent = el.classList.contains('speaking') ? 'parle' : el.classList.contains('unstable') ? 'connexion instable' : el.dataset.self === '1' ? 'toi' : ''; }
 async function refreshTitle() {
   if (Date.now() - titleAt < 5000) return; titleAt = Date.now();
-  try { const tab = await chrome.tabs.get(tabId); tabTitle = (tab.title || '').replace(/\s*[|–-]\s*(Netflix|Prime Video|TF1\+?|Canal\+|myCANAL|YouTube|Paramount\+|Disney\+|M6\+?|france\.tv).*$/i, '').trim(); } catch {}
+  try { const tab = await chrome.tabs.get(tabId); tabTitle = (tab.title || '').replace(/\s*[|–-]\s*(Netflix|Prime Video|TF1\+?|Canal\+|myCANAL|YouTube|Paramount\+|Disney\+|M6\+?|france\.tv|Crunchyroll|ADN).*$/i, '').trim(); } catch {}
   $('#nowTitle').textContent = tabTitle || 'Le programme';
 }
 function render() {

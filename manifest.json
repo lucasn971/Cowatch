@@ -21,6 +21,9 @@
     "*://*.netflix.com/*",
     "*://*.youtube.com/*",
     "https://salon-coche-private.onrender.com/*",
+    "*://*.crunchyroll.com/*",
+    "*://*.animationdigitalnetwork.fr/*",
+    "*://*.animationdigitalnetwork.com/*",
     "http://localhost/*"
   ],
   "background": {
@@ -48,6 +51,9 @@
         "*://*.disneyplus.com/*",
         "*://*.amazon.fr/*",
         "*://*.amazon.com/*",
+        "*://*.crunchyroll.com/*",
+        "*://*.animationdigitalnetwork.fr/*",
+        "*://*.animationdigitalnetwork.com/*",
         "http://localhost/*"
       ],
       "js": [
@@ -68,6 +74,9 @@
         "*://*.disneyplus.com/*",
         "*://*.amazon.fr/*",
         "*://*.amazon.com/*",
+        "*://*.crunchyroll.com/*",
+        "*://*.animationdigitalnetwork.fr/*",
+        "*://*.animationdigitalnetwork.com/*",
         "http://localhost/*"
       ],
       "js": [
@@ -121,6 +130,9 @@
         "*://*.disneyplus.com/*",
         "*://*.amazon.fr/*",
         "*://*.amazon.com/*",
+        "*://*.crunchyroll.com/*",
+        "*://*.animationdigitalnetwork.fr/*",
+        "*://*.animationdigitalnetwork.com/*",
         "http://localhost/*"
       ]
     }

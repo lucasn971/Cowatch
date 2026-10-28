@@ -39,7 +39,7 @@ li{margin:6px 0}
 </main>
 <script>
   const code = (location.pathname.split('/')[2] || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
-  const ALLOWED = ['canalplus.com', 'paramountplus.com', 'tf1.fr', 'primevideo.com', 'amazon.fr', 'amazon.com', 'netflix.com', 'disneyplus.com', 'youtube.com', 'localhost'];
+  const ALLOWED = ['canalplus.com', 'paramountplus.com', 'tf1.fr', 'primevideo.com', 'amazon.fr', 'amazon.com', 'netflix.com', 'disneyplus.com', 'youtube.com', 'crunchyroll.com', 'animationdigitalnetwork.fr', 'animationdigitalnetwork.com', 'localhost'];
   let target = '';
   try {
     const u = new URL(new URLSearchParams(location.search).get('u') || '');
@@ -48,7 +48,7 @@ li{margin:6px 0}
   document.getElementById('code').textContent = code;
   if (target) {
     const host = new URL(target).hostname.replace(/^www\./, '');
-    const names = { 'canalplus.com': 'Canal+', 'paramountplus.com': 'Paramount+', 'tf1.fr': 'TF1+', 'primevideo.com': 'Prime Video', 'amazon.fr': 'Prime Video', 'amazon.com': 'Prime Video', 'netflix.com': 'Netflix', 'disneyplus.com': 'Disney+', 'youtube.com': 'YouTube' };
+    const names = { 'canalplus.com': 'Canal+', 'paramountplus.com': 'Paramount+', 'tf1.fr': 'TF1+', 'primevideo.com': 'Prime Video', 'amazon.fr': 'Prime Video', 'amazon.com': 'Prime Video', 'netflix.com': 'Netflix', 'disneyplus.com': 'Disney+', 'youtube.com': 'YouTube', 'crunchyroll.com': 'Crunchyroll', 'animationdigitalnetwork.fr': 'ADN', 'animationdigitalnetwork.com': 'ADN' };
     const k = Object.keys(names).find(h => host === h || host.endsWith('.' + h));
     document.getElementById('where').textContent = k ? ` · sur ${names[k]}` : '';
   }
