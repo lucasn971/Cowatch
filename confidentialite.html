@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confidentialité Cowatch</title>
+<style>
+:root{--bg:#060A1C;--panel:#101A3C;--line:#26315A;--text:#F4F6FA;--muted:#C3C9D6;--ok:#7CE0A3}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 16px}
+main{max-width:680px;margin:0 auto}
+.logo{font-weight:800;font-size:20px;letter-spacing:-.02em}
+h1{font-size:26px;line-height:1.15;margin:14px 0 4px;letter-spacing:-.02em}
+h2{font-size:18px;margin:28px 0 6px}
+.muted{color:var(--muted)}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-top:14px}
+ul{padding-left:20px;margin:6px 0}
+li{margin:4px 0}
+b{color:var(--text)}
+a{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+th,td{text-align:left;vertical-align:top;padding:8px 6px;border-top:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+@media (max-width:520px){table,thead,tbody,tr,th,td{display:block}thead{display:none}td{border:0;padding:2px 0}tr{border-top:1px solid var(--line);padding:8px 0}td:first-child{font-weight:700}}
+</style>
+</head>
+<body>
+<main>
+<div class="logo">Cowatch</div>
+<h1>Confidentialité</h1>
+<p class="muted">Politique de confidentialité de l'extension Chrome Cowatch et du site salon-coche-private.onrender.com. Dernière mise à jour : 28 octobre 2026.</p>
+
+<div class="box">
+<p><b>En bref.</b> Cowatch sert à regarder une vidéo ensemble à distance. Chacun utilise son propre abonnement. Cowatch ne vend rien, n'affiche pas de publicité et ne revend aucune donnée. Les messages et la voix servent seulement à la conversation du salon : ils ne sont jamais enregistrés.</p>
+</div>
+
+<h2>Ce que Cowatch utilise, et pourquoi</h2>
+<table>
+<thead><tr><th>Donnée</th><th>Pourquoi</th><th>Combien de temps</th></tr></thead>
+<tbody>
+<tr><td>Ton pseudo et ta photo (si tu en ajoutes une)</td><td>Les montrer aux personnes de ton salon.</td><td>Gardés dans ton navigateur. Sur le serveur, seulement pendant que tu es dans le salon.</td></tr>
+<tr><td>Les messages écrits du salon</td><td>Les afficher aux autres. Les 50 derniers sont montrés à qui arrive en cours de route.</td><td>En mémoire sur le serveur, effacés dès que le salon est vide. Jamais écrits sur disque.</td></tr>
+<tr><td>La voix</td><td>Se parler pendant la vidéo.</td><td>Jamais enregistrée. Elle passe directement d'un navigateur à l'autre, chiffrée. Si la connexion directe est impossible, elle passe par un relais (Cloudflare) qui ne peut pas l'écouter.</td></tr>
+<tr><td>L'état de la vidéo (lecture, pause, position, heure de l'image en direct)</td><td>Caler la vidéo de tout le salon au même moment.</td><td>En mémoire, pendant la séance.</td></tr>
+<tr><td>Le site regardé (par exemple netflix.com), jamais l'adresse exacte de la page</td><td>Savoir sur quel site se caler, et l'afficher dans le salon.</td><td>Pendant la séance. Peut figurer dans les statistiques ci-dessous si tu as dit oui.</td></tr>
+<tr><td>Ton choix d'ambiance et ta réponse aux statistiques</td><td>Les retrouver la fois suivante.</td><td>Dans ton navigateur seulement.</td></tr>
+</tbody>
+</table>
+
+<h2>Statistiques anonymes (seulement si tu dis oui)</h2>
+<p>Cowatch te demande ton accord une fois. Tu peux changer d'avis à tout moment dans le menu « … » du panneau. Si tu acceptes, à la fin de chaque séance, un résumé anonyme est envoyé à l'équipe Cowatch pour améliorer le calage et la stabilité :</p>
+<ul>
+<li>durée de la séance, nombre de participants, site (domaine), ambiance, mode direct ou replay ;</li>
+<li>nombres de réactions, de messages, de calages et de reconnexions (des nombres, jamais le contenu) ;</li>
+<li>version de Cowatch, navigateur, système, état du micro (ouvert, coupé, absent) et types de soucis rencontrés.</li>
+</ul>
+<p>Chaque personne y est désignée par un code tiré au hasard (le même d'une séance à l'autre, pour compter les habitués), jamais par son pseudo. <b>Jamais</b> : le texte des messages, la voix, les pseudos, les photos, les adresses des pages, le code du salon. Si tu refuses, ta présence est seulement comptée. Ces résumés sont reçus par e-mail par l'équipe Cowatch et gardés au plus 12 mois.</p>
+
+<h2>Ce que Cowatch ne fait pas</h2>
+<ul>
+<li>Il ne lit pas tes identifiants ni tes informations de paiement des sites de streaming, et il ne copie pas la vidéo.</li>
+<li>Il ne fonctionne que sur les sites de streaming listés à l'installation, et seulement pour trouver le lecteur vidéo, le caler et afficher le salon par-dessus.</li>
+<li>Il n'utilise aucun cookie publicitaire, aucun traceur, et ne vend ni ne partage de données avec des annonceurs.</li>
+</ul>
+
+<h2>Services utilisés</h2>
+<ul>
+<li><b>Render</b> héberge le serveur des salons.</li>
+<li><b>Cloudflare</b> fournit le relais de voix quand une connexion directe est impossible.</li>
+<li><b>Google Fonts</b> fournit les polices de certaines ambiances. Ton navigateur les télécharge chez Google.</li>
+<li><b>Gmail</b> (Google) reçoit les statistiques anonymes.</li>
+</ul>
+
+<h2>Tes droits</h2>
+<p>Tu peux désinstaller l'extension à tout moment : tout ce qu'elle garde dans ton navigateur est alors effacé. Pour une question, ou pour faire valoir tes droits (accès, effacement, opposition), écris à <a href="mailto:lucasnourypro@gmail.com">lucasnourypro@gmail.com</a>. Tu peux aussi saisir la CNIL (cnil.fr).</p>
+<p class="muted">Cowatch n'est pas lié à Netflix, Prime Video, Canal+, TF1+, Disney+, Paramount+ ni YouTube. Ces noms appartiennent à leurs propriétaires.</p>
+</main>
+</body>
+</html>
