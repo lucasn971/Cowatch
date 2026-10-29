@@ -35,7 +35,7 @@ async function reinject() {
   if (!chrome.scripting?.executeScript) return 0;
   let n = 0;
   for (const cs of chrome.runtime.getManifest().content_scripts || []) {
-    if (!cs.js.includes('player.js') && !cs.js.includes('clock.js')) continue;
+    if (!cs.js.includes('coeur/player.js') && !cs.js.includes('coeur/clock.js')) continue;
     const tabs = await chrome.tabs.query({ url: cs.matches }).catch(() => []);
     for (const t of tabs) {
       try { await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: cs.js, world: cs.world || 'ISOLATED' }); n++; } catch {}

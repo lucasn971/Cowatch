@@ -23,7 +23,7 @@ const videoTag = '<video src="/v.webm" muted autoplay loop style="width:960px;he
   let sw = c.serviceWorkers()[0] || await c.waitForEvent('serviceworker');
   const m = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
   for (const h of ['crunchyroll.com', 'animationdigitalnetwork.fr', 'animationdigitalnetwork.com'])
-    ok(m.host_permissions.some(u => u.includes(h)) && m.content_scripts.filter(s => s.js.includes('player.js') || s.js.includes('clock.js')).every(s => s.matches.some(u => u.includes(h))), `manifeste : ${h} autorisé et scripts chargés`);
+    ok(m.host_permissions.some(u => u.includes(h)) && m.content_scripts.filter(s => s.js.includes('coeur/player.js') || s.js.includes('coeur/clock.js')).every(s => s.matches.some(u => u.includes(h))), `manifeste : ${h} autorisé et scripts chargés`);
   await sw.evaluate(() => { globalThis.__seen = []; chrome.runtime.onMessage.addListener((msg, s) => { if (msg && (msg.cmd === 'site' || msg.cmd === 'video')) globalThis.__seen.push({ cmd: msg.cmd, host: msg.host, frame: s.frameId }); }); });
   const p = await c.newPage();
   for (const [url, host, cadre] of [['https://www.crunchyroll.com/fr/watch/G0XHWM1JP/episode', 'static.crunchyroll.com', true], ['https://animationdigitalnetwork.fr/video/one-piece/1', 'animationdigitalnetwork.fr', false], ['https://animationdigitalnetwork.com/video/frieren/2', 'animationdigitalnetwork.com', false]]) {
@@ -34,7 +34,7 @@ const videoTag = '<video src="/v.webm" muted autoplay loop style="width:960px;he
   }
   // L'invitation ouvre le site : la page /j/ accepte les adresses Crunchyroll et ADN (même liste que le panneau).
   const join = fs.readFileSync(path.join(__dirname, fs.existsSync(path.join(__dirname, 'join.html')) ? 'join.html' : '../join.html'), 'utf8');
-  const panel = fs.readFileSync(path.join(EXT, 'panel.js'), 'utf8');
+  const panel = fs.readFileSync(path.join(EXT, 'coeur', 'panel.js'), 'utf8');
   for (const h of ['crunchyroll.com', 'animationdigitalnetwork.fr', 'animationdigitalnetwork.com']) ok(join.includes(`'${h}'`) && panel.includes(`'${h}'`), `invitation : ${h} accepté (page /j/ et panneau)`);
   await c.close();
 })().catch(e => { console.error(e); process.exit(1); });

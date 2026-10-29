@@ -54,7 +54,7 @@
         "http://localhost/*"
       ],
       "js": [
-        "clock.js"
+        "coeur/clock.js"
       ],
       "world": "MAIN",
       "all_frames": true,
@@ -77,8 +77,8 @@
         "http://localhost/*"
       ],
       "js": [
-        "themes.js",
-        "player.js"
+        "coeur/themes.js",
+        "coeur/player.js"
       ],
       "all_frames": true,
       "run_at": "document_idle"

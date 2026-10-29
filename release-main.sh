@@ -11,6 +11,8 @@ git add cowatch.zip && { git diff --cached --quiet || git commit -qm "cowatch.zi
 git diff --quiet || { echo "modifications non enregistrées sur prochaine-version"; exit 1; }
 git checkout -q main && git pull -q --ff-only origin main 2>/dev/null || true
 git checkout prochaine-version -- .
+# fichiers déplacés ou supprimés sur prochaine-version (ex. lot 0 : cœur commun dans coeur/) : les retirer aussi de main
+for f in $(git ls-files); do git cat-file -e "prochaine-version:$f" 2>/dev/null || git rm -q "$f"; done
 git rm -q --cached sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs sondage.js 2>/dev/null || true
 rm -f sondage-anime.html sondage-telerealite.html sondage-google-sheet.gs sondage.js
 python3 - <<'PY'

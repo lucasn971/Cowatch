@@ -4,7 +4,7 @@
 # Le code est exactement celui de l'extension : seul le manifeste copié change.
 cd "$(dirname "$0")"
 T=$(mktemp -d)
-cp -r background.js clock.js engine.html engine.js fonts icons join.js manifest.json mic.html mic.js panel.css panel.html panel.js player.js themes.js "$T/"
+cp -r background.js coeur engine.html engine.js fonts icons join.js manifest.json mic.html mic.js panel.html "$T/"
 node -e '
 const fs = require("fs"), f = process.argv[1], m = JSON.parse(fs.readFileSync(f, "utf8"));
 const keep = a => a.filter(u => !/localhost/.test(u));

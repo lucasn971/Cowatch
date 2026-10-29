@@ -1,9 +1,9 @@
 /* Panneau Cowatch — structure commune, couleurs et polices fournies par l'ambiance (variables --cw-*, voir themes.js). */
-@font-face { font-family: 'Barlow Condensed'; font-weight: 700; src: url(fonts/BarlowCondensed-Bold.woff) format('woff'); font-display: swap; }
-@font-face { font-family: 'Barlow Condensed'; font-weight: 800; src: url(fonts/BarlowCondensed-ExtraBold.woff) format('woff'); font-display: swap; }
-@font-face { font-family: 'Barlow'; font-weight: 400; src: url(fonts/Barlow-Regular.woff) format('woff'); font-display: swap; }
-@font-face { font-family: 'Barlow'; font-weight: 600; src: url(fonts/Barlow-SemiBold.woff) format('woff'); font-display: swap; }
-@font-face { font-family: 'Barlow'; font-weight: 700; src: url(fonts/Barlow-Bold.woff) format('woff'); font-display: swap; }
+@font-face { font-family: 'Barlow Condensed'; font-weight: 700; src: url(../fonts/BarlowCondensed-Bold.woff) format('woff'); font-display: swap; }
+@font-face { font-family: 'Barlow Condensed'; font-weight: 800; src: url(../fonts/BarlowCondensed-ExtraBold.woff) format('woff'); font-display: swap; }
+@font-face { font-family: 'Barlow'; font-weight: 400; src: url(../fonts/Barlow-Regular.woff) format('woff'); font-display: swap; }
+@font-face { font-family: 'Barlow'; font-weight: 600; src: url(../fonts/Barlow-SemiBold.woff) format('woff'); font-display: swap; }
+@font-face { font-family: 'Barlow'; font-weight: 700; src: url(../fonts/Barlow-Bold.woff) format('woff'); font-display: swap; }
 :root {
   --cw-bg: #060A1C; --cw-surface: #101A3C; --cw-border: #26315A; --cw-text: #F4F6FA; --cw-muted: #C3C9D6;
   --cw-accent: #F4F6FA; --cw-accent-ink: #060A1C; --cw-speaking: #7CE0A3; --cw-radius: 10px; --cw-pill: 99px;
