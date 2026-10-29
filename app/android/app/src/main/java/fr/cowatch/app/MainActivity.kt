@@ -29,6 +29,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -249,6 +250,12 @@ class MainActivity : ComponentActivity(), Hote {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val u = request.url
+                // Bouton de l'accueil « Me déconnecter de tous les sites » (comme le gestionnaire de cookies de Rave) :
+                // seulement depuis notre accueil, jamais depuis la page d'un site.
+                if (u.scheme == "cowatch" && u.host == "oublier") {
+                    if (Uri.parse(view.url ?: "").host == HOTE_APP) oublierSites()
+                    return true
+                }
                 if (u.host == HOTE_APP) { appliquerUa(false); return false }
                 if (!sites.autorise(u)) {
                     // Hors liste (aide, paiement, connexion Google…) : le navigateur du téléphone, jamais notre lecteur.
@@ -315,6 +322,15 @@ class MainActivity : ComponentActivity(), Hote {
             u.host == HOTE_APP -> "cowatch · choisis ton site"
             else -> (if (u.scheme == "https") "🔒 " else "⚠ ") + (u.host ?: "").removePrefix("www.")
         }
+    }
+
+    /** Efface les connexions et données des sites (cookies, stockage, cache). Les réglages du salon restent. */
+    private fun oublierSites() {
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
+        lecteur.clearCache(true)
+        Toast.makeText(this, R.string.sites_oublies, Toast.LENGTH_LONG).show()
     }
 
     private fun ouvrirDehors(u: Uri) {

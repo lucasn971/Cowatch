@@ -1,6 +1,6 @@
 # Cowatch — l'appli téléphone (Android, iPhone)
 
-Version d'essai **0.1.0**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
+Version d'essai **0.1.1**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
 
 ## Le principe (« mode B » de l'étude « Cowatch partout »)
 Comme Rave : le site du service (Netflix, Crunchyroll, ADN, Canal+…) s'affiche **dans** l'appli, et Cowatch commande sa vidéo.
@@ -33,6 +33,12 @@ et ferait refuser l'appli par les stores. Tout est écrit pour Cowatch, à parti
 | Navigue partout | Hors liste blanche : le lien part dans le navigateur du téléphone |
 | Pas de direct français | Calage du direct de l'extension (heure réelle de l'image) |
 | Appli « afficher par-dessus », position, contacts… | Permissions : Internet, micro, notification du salon. C'est tout |
+
+## Ce que l'analyse de l'appli Rave a apporté (29/10)
+Analyse de Rave pour Mac 1.17.12 (fichiers de l'appli, sans recopier de code) : `claude/cowatch-analyse-rave.md` dans le projet.
+- **« Y aller »** : quand quelqu'un passe à l'épisode suivant, les autres reçoivent une proposition (message serveur `page`). Rave le fait avec un « meneur » qui impose la vidéo ; ici, chacun choisit.
+- **« Me déconnecter de tous les sites »** sur l'accueil (Rave a un gestionnaire de cookies).
+- **Pas repris** : le lecteur maison de Rave, qui imite les applis officielles auprès des serveurs privés des services (Netflix MSL, licences Widevine) ; les 5 kits qui revendent la connexion des utilisateurs (Honeygain, Infatica, Pawns, Repocket, Switchboard) ; la pub ; le « domain fronting ».
 
 ## Construire l'APK d'essai
 - **Automatique** : chaque envoi sur `app-mobile` lance l'atelier GitHub `.github/workflows/app-android.yml` ;

@@ -13,4 +13,5 @@
     <string name="lien_copie">Lien copié</string>
     <string name="micro_refuse">Sans micro, tu peux quand même écrire et réagir.</string>
     <string name="hors_liste">Ce site n\'est pas dans la liste de Cowatch : il s\'ouvre dans ton navigateur.</string>
+    <string name="sites_oublies">Déconnecté de tous les sites : tes comptes ne sont plus enregistrés dans Cowatch.</string>
 </resources>

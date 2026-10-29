@@ -120,6 +120,11 @@ final class EcranController: UIViewController, Hote, WKNavigationDelegate, WKUID
             if url.isFileURL { decisionHandler(.allow, preferences) } else { UIApplication.shared.open(url); decisionHandler(.cancel, preferences) }
             return
         }
+        // « Me déconnecter de tous les sites » : seulement depuis notre accueil.
+        if url.scheme == "cowatch", url.host == "oublier" {
+            if webView.url?.isFileURL == true { oublierSites() }
+            decisionHandler(.cancel, preferences); return
+        }
         if !principal || url.isFileURL { decisionHandler(.allow, preferences); return }
         guard sites.autorise(url) else {
             if url.scheme == "https" || url.scheme == "http" { UIApplication.shared.open(url) }
@@ -135,6 +140,14 @@ final class EcranController: UIViewController, Hote, WKNavigationDelegate, WKUID
                  type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         guard webView === salon, origin.protocol == "file", type == .microphone else { decisionHandler(.deny); return }
         demanderMicro { ok in decisionHandler(ok ? .grant : .deny) }
+    }
+
+    private func oublierSites() {
+        let magasin = lecteur.configuration.websiteDataStore
+        magasin.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { enregistrements in
+            let sites = enregistrements.filter { r in self.sites.site(host: r.displayName) != nil || self.sites.liste.contains { s in s.domaines.contains(r.displayName) } }
+            magasin.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: sites) {}
+        }
     }
 
     // ---------- Hote ----------

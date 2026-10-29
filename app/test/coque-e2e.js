@@ -77,6 +77,14 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   ok(await until(async () => (await B.salon.textContent('#chat')).includes('Opening, on skip ?')), 'chat : message reçu dans le salon d\'Agathe');
   ok(await until(() => B.lecteur.evaluate(() => (document.querySelector('#cowatch-chat')?.innerText || '').includes('Opening'))), 'chat : message affiché aussi sur la vidéo d\'Agathe');
 
+  // --- Épisode suivant (idée reprise de Rave) : Octave change de vidéo, Agathe reçoit une proposition ---
+  const ep2 = `${BASE}/test-player.html?who=octave&ep=2`;
+  await A.lecteur.goto(ep2);
+  ok(await until(() => B.salon.locator('#cw-suivre').count().then(n => n === 1)), 'Octave passe à l\'épisode suivant : proposition « Y aller » chez Agathe');
+  ok(await A.salon.locator('#cw-suivre').count() === 0, 'pas de proposition chez Octave lui-même');
+  await B.salon.click('#cw-suivre button.ghost');
+  ok(await until(() => B.log.open.includes(ep2)), 'Agathe touche « Y aller » : son lecteur ouvre le même épisode');
+
   // --- Salon replié : languette sur la vidéo, qui le rouvre ---
   await B.setPanel(false);
   ok(await until(() => B.lecteur.locator('#cowatch-reopen').count().then(n => n === 1)), 'salon replié : la languette Cowatch apparaît sur la vidéo');
@@ -87,7 +95,7 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   await B.lecteur.evaluate(() => window.__coqueTestPost(JSON.stringify({ k: 'call', id: 'x1', fn: 'storage.set', args: { items: { name: 'pirate' } } })));
   await B.lecteur.evaluate(() => window.__coqueTestPost(JSON.stringify({ k: 'call', id: 'x2', fn: 'open', args: { url: 'https://exemple.invalid' } })));
   await sleep(400);
-  ok(B.store.name === 'Agathe' && B.log.refused.includes('storage.set') && B.log.refused.includes('open') && !B.log.open.length, 'le lecteur n\'a droit qu\'à lire l\'invitation : écriture et ouverture de page refusées');
+  ok(B.store.name === 'Agathe' && B.log.refused.includes('storage.set') && B.log.refused.includes('open') && !B.log.open.includes('https://exemple.invalid'), 'le lecteur n\'a droit qu\'à lire l\'invitation : écriture et ouverture de page refusées');
 
   ok(!errs.length, `aucune erreur JavaScript (${errs.slice(0, 3).join(' | ')})`);
   await browser.close(); files.close();

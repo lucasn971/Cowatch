@@ -438,6 +438,15 @@ function handle(conn) {
         broadcast(me.room, md.recap);
         break;
       }
+      case 'page': { // appli téléphone : quelqu'un passe à une autre vidéo (épisode suivant) ; les autres reçoivent une proposition « Y aller »
+        if (me.kind !== 'salon' || Date.now() - (me.pageAt || 0) < 3000) break;
+        let u; try { u = new URL(String(m.url || '')); } catch { break; }
+        if ((u.protocol !== 'https:' && u.hostname !== 'localhost') || u.href.length > 600) break; // localhost : essais seulement
+        me.pageAt = Date.now();
+        broadcast(me.room, { t: 'page', url: u.href, title: String(m.title || '').slice(0, 120), by: me.name }, me.id, 'salon');
+        STATS.count(me.room, 'pages');
+        break;
+      }
       case 'kind': // la page de ce participant lit-elle un direct ? le serveur décide du mode pour tout le salon
         if (me.kind !== 'player') break;
         me.live = !!m.live; if (process.env.CW_DEBUG) console.log('KIND', me.name, me.live); roomMode(me.room, me);

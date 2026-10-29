@@ -138,6 +138,8 @@
       case 'mute': S.muted = m.value != null ? !!m.value : !S.muted; applyMic(); sendS({ t: 'mute', muted: S.muted }); if (m.toast) toTab({ t: 'toast', text: S.muted ? 'Micro coupé' : 'Micro activé' }); break;
       case 'theme': if (S.code) sendS({ t: 'theme', theme: m.theme }); else wantTheme = m.theme; break;
       case 'prono': sendS({ t: 'prono', score: m.score }); break;
+      // Appli téléphone : « on passe à l'épisode suivant » (la page vidéo affichée change) ; les autres reçoivent une proposition.
+      case 'page': if (S.code) sendS({ t: 'page', url: String(m.url || '').slice(0, 600), title: String(m.title || '').slice(0, 120) }); break;
       case 'recap': sendS({ t: 'recap', score: m.score || '' }); break;
       case 'recapClose': S.recap = null; snap(); break;
       case 'goalCancel': if (S.myGoal) { sendS({ t: 'goal-cancel', id: S.myGoal.id }); S.myGoal = null; snap(); } break;
@@ -255,6 +257,7 @@
       if (ws !== wsS) return;
       const m = JSON.parse(ev.data);
       if (m.t === 'error') { S.err = m.msg; S.joining = false; trace('erreur serveur', m.msg, true); snap(); return; }
+      if (m.t === 'page') { EMIT({ ev: 'page', url: m.url, title: m.title, by: m.by }); return; }
       if (m.t === 'welcome') {
         clearTimeout(slow); retryS = 0; S.err = ''; S.wake = false; ws.ok = true;
         const first = !S.me.id, back = !first && S.joining; S.joining = false;
