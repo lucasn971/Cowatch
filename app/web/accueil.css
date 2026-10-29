@@ -1,0 +1,35 @@
+/* Accueil de l'appli : ambiance « Anime » (cible n°1), mêmes jetons que coeur/themes.js. Pas de rouge, d'orange, de bleu ni de violet de marque. */
+:root {
+  --bg: #070C0A; --surface: #0E1713; --surface2: #121E19; --border: #21302A; --text: #EEF5F2; --muted: #AEC3BA;
+  --accent: #19D3A6; --accent-ink: #04120D; --spoil: #FFB547;
+  --display: Unbounded, system-ui, sans-serif; --body: 'M PLUS 1p', system-ui, sans-serif;
+}
+* { box-sizing: border-box }
+html, body { margin: 0; min-height: 100% }
+body {
+  background: radial-gradient(circle, rgba(25,211,166,.14) 1px, transparent 1.5px) 0 0/10px 10px, var(--bg);
+  color: var(--text); font: 15px/1.5 var(--body);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+main { max-width: 760px; margin: 0 auto; padding: 20px 16px 32px }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap }
+.logo { font: 800 24px var(--display); letter-spacing: .01em }
+.logo i { color: var(--accent); font-style: normal }
+.tag { font-size: 12px; color: var(--muted) }
+h1 { font: 700 26px/1.15 var(--display); margin: 22px 0 8px }
+.lead { color: var(--muted); margin: 0 0 18px }
+h2 { font: 600 13px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px }
+.tile {
+  position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 84px; padding: 14px;
+  border-radius: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); text-decoration: none;
+}
+.tile:active { transform: scale(.98) }
+.tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.name { font: 700 17px var(--display) }
+.dom { font-size: 12px; color: var(--muted) }
+.state { position: absolute; right: 10px; top: 10px; font-size: 11px; color: var(--spoil); border: 1px solid rgba(255,181,71,.4); border-radius: 99px; padding: 1px 8px }
+.trust { margin-top: 26px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border-left: 4px solid var(--accent); color: var(--muted) }
+.trust b { display: block; color: var(--text); margin-bottom: 4px }
+.foot { font-size: 12px; color: var(--muted); margin-top: 16px }
+@media (prefers-reduced-motion: reduce) { .tile:active { transform: none } }

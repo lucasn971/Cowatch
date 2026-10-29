@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cowatch</string>
+    <string name="canal_salon">Salon en cours</string>
+    <string name="canal_salon_desc">La voix et le salon restent ouverts quand l\'écran s\'éteint.</string>
+    <string name="notif_titre">Salon %1$s</string>
+    <string name="notif_micro_ouvert">Micro ouvert · %1$d dans le salon</string>
+    <string name="notif_micro_coupe">Micro coupé · %1$d dans le salon</string>
+    <string name="notif_micro">Micro</string>
+    <string name="notif_quitter">Quitter</string>
+    <string name="webview_trop_vieux">Cowatch a besoin d\'une version récente d\'« Android System WebView ». Mets-la à jour depuis Google Play, puis relance l\'appli.</string>
+    <string name="partager">Inviter dans le salon</string>
+    <string name="lien_copie">Lien copié</string>
+    <string name="micro_refuse">Sans micro, tu peux quand même écrire et réagir.</string>
+    <string name="hors_liste">Ce site n\'est pas dans la liste de Cowatch : il s\'ouvre dans ton navigateur.</string>
+</resources>

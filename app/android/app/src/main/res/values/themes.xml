@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Couleurs de l'ambiance « Anime » (cible n°1) : fond très sombre, accent jade. -->
+    <color name="fond">#070C0A</color>
+    <color name="surface">#121E19</color>
+    <color name="texte">#EEF5F2</color>
+    <color name="discret">#AEC3BA</color>
+    <color name="accent">#19D3A6</color>
+    <style name="Theme.Cowatch" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fond</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/fond</item>
+        <item name="android:navigationBarColor">@color/fond</item>
+    </style>
+</resources>

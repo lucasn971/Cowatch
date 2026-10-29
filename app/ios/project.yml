@@ -1,0 +1,41 @@
+# Cowatch iPhone — projet XcodeGen (https://github.com/yonaskolb/XcodeGen).
+# Construire sur un Mac :
+#   bash ../outils/assembler-web.sh build-web/www   # pages web depuis le cœur commun
+#   xcodegen && open Cowatch.xcodeproj
+# ⚠️ iPhone mis de côté par Lucas jusqu'au GO du 5/12 : cette coque n'a jamais été construite ni essayée.
+name: Cowatch
+options:
+  bundleIdPrefix: fr.cowatch
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  Cowatch:
+    type: application
+    platform: iOS
+    sources:
+      - path: Cowatch
+      - path: build-web/www
+        type: folder
+        buildPhase: resources
+    preBuildScripts:
+      - name: Assembler les pages web (cœur commun)
+        script: bash "$SRCROOT/../outils/assembler-web.sh" "$SRCROOT/build-web/www"
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.cowatch.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Cowatch/Info.plist
+      properties:
+        CFBundleDisplayName: Cowatch
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSMicrophoneUsageDescription: "Pour parler avec ton salon pendant la vidéo. Rien n'est enregistré."
+        UIBackgroundModes: [audio]
+        CFBundleURLTypes:
+          - CFBundleURLName: fr.cowatch.invitation
+            CFBundleURLSchemes: [cowatch]

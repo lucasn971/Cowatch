@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "note": "Liste blanche des sites de l'appli (mode B : le site du service s'affiche dans Cowatch). Même liste que l'extension (manifest.json, SITES de coeur/panel.js, ALLOWED de join.html). Seuls ces domaines : s'ouvrent dans le lecteur, reçoivent coeur/player.js et coeur/clock.js, ont droit au pont natif et à la vidéo protégée (Widevine). Tout autre lien part dans le navigateur du téléphone. ua = « ordinateur » : le site refuse les navigateurs de téléphone, l'appli se présente comme un ordinateur. etat = « a-tester » tant que l'essai réel sur téléphone n'est pas fait (demi-journée du mode B, validée par Lucas le 29/10).",
+  "sites": [
+    { "id": "crunchyroll", "nom": "Crunchyroll", "groupe": "Anime", "accueil": "https://www.crunchyroll.com/fr", "domaines": ["crunchyroll.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "adn", "nom": "ADN", "groupe": "Anime", "accueil": "https://animationdigitalnetwork.com/", "domaines": ["animationdigitalnetwork.fr", "animationdigitalnetwork.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "netflix", "nom": "Netflix", "groupe": "Séries et films", "accueil": "https://www.netflix.com/browse", "domaines": ["netflix.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "primevideo", "nom": "Prime Video", "groupe": "Séries et films", "accueil": "https://www.primevideo.com/", "domaines": ["primevideo.com", "amazon.fr", "amazon.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "disneyplus", "nom": "Disney+", "groupe": "Séries et films", "accueil": "https://www.disneyplus.com/fr-fr", "domaines": ["disneyplus.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "paramountplus", "nom": "Paramount+", "groupe": "Séries et films", "accueil": "https://www.paramountplus.com/fr/", "domaines": ["paramountplus.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "canalplus", "nom": "Canal+", "groupe": "Télé et sport", "accueil": "https://www.canalplus.com/", "domaines": ["canalplus.com", "canal-plus.com"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "tf1", "nom": "TF1+", "groupe": "Télé et sport", "accueil": "https://www.tf1.fr/", "domaines": ["tf1.fr"], "ua": "ordinateur", "etat": "a-tester" },
+    { "id": "youtube", "nom": "YouTube", "groupe": "Vidéos", "accueil": "https://m.youtube.com/", "domaines": ["youtube.com"], "ua": "mobile", "etat": "a-tester" }
+  ],
+  "app": {
+    "serveur": "https://salon-coche-private.onrender.com",
+    "origineApp": "https://appassets.androidplatform.net"
+  }
+}

@@ -1,0 +1,8 @@
+/* Écran du salon dans l'appli : le panneau de l'extension, adapté au téléphone (doigts, petite hauteur sous la vidéo). */
+html.app body { padding-bottom: env(safe-area-inset-bottom) }
+html.app button, html.app input { min-height: 44px }
+/* Sous la vidéo (portrait) : en-tête plus serré pour laisser la place au chat. */
+html.app[data-layout="bas"] header { padding: 6px 8px 4px 14px }
+html.app[data-layout="bas"] .logo { font-size: 18px }
+/* L'appli gère le repli du salon (bouton natif) : le bouton du panneau latéral de Chrome ne sert pas ici. */
+html.app #foldBtn { display: none !important }
