@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 /**
  * « Où va ta connexion » : ce que l'appli a réellement contacté depuis son ouverture, montré sur l'accueil.
- * * Rave mesure, pour lui, ce que chacun de ses kits fait passer par la connexion de l'utilisateur (un compteur d'octets par kit) ;
+ * Rave mesure, pour lui, ce que chacun de ses kits fait passer par la connexion de l'utilisateur (un compteur d'octets par kit) ;
  * Cowatch fait l'inverse : il montre à l'utilisateur chaque site contacté et le volume envoyé.
  * Rien n'est envoyé nulle part : ce journal reste dans la mémoire du téléphone et disparaît à la fermeture de l'appli.
  */
