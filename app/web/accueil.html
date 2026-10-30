@@ -20,6 +20,27 @@
     <b>Ton mot de passe reste à toi.</b>
     Tu te connectes sur la vraie page du service, son adresse est affichée en haut de l'écran. Cowatch ne lit jamais ce que tu tapes. Ton gestionnaire de mots de passe peut remplir tout seul.
   </aside>
+  <section class="promesse" aria-labelledby="t-promesse">
+    <h2 id="t-promesse">Ce que Cowatch ne fera jamais</h2>
+    <ul>
+      <li><b>Revendre ta connexion.</b> Aucun kit de « partage de bande passante » : personne ne passe par ton Internet.</li>
+      <li><b>Afficher de la pub</b> ou te pister : aucune régie, aucun outil de mesure dans l'appli.</li>
+      <li><b>Lire ton presse-papiers.</b> Cowatch y met le lien d'invitation quand tu le demandes, c'est tout.</li>
+      <li><b>Lire ce que tu tapes</b> sur les sites, ni allumer ta caméra.</li>
+    </ul>
+    <p class="note">Vérifié par une machine à chaque nouvelle version : si l'un de ces points change, l'appli ne se construit pas.</p>
+  </section>
+  <section id="connexion" class="connexion" aria-labelledby="t-connexion" hidden>
+    <h2 id="t-connexion">Où va ta connexion</h2>
+    <p class="lead" id="cx-resume"></p>
+    <h3>Pour le salon (Cowatch)</h3>
+    <ul id="cx-salon" class="hotes"></ul>
+    <p class="note" id="cx-bloques" hidden></p>
+    <h3>Pour les sites que tu regardes</h3>
+    <p class="note">La page du service et ses propres serveurs (vidéo, images, et ce que le service mesure lui-même).</p>
+    <ul id="cx-sites" class="hotes"></ul>
+    <p class="oublier"><a href="cowatch://connexions">Actualiser</a></p>
+  </section>
   <p class="oublier"><a href="cowatch://oublier">Me déconnecter de tous les sites</a> · efface tes connexions enregistrées dans Cowatch.</p>
   <p class="foot">Les sites marqués « à tester » n'ont pas encore été essayés sur téléphone : la vidéo peut refuser de se lancer ou être moins nette.</p>
 </main>

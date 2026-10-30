@@ -1,0 +1,22 @@
+# Garantie « zéro revente » : à chaque envoi, sur toutes les branches, une machine vérifie que Cowatch (extension, serveur,
+# appli) ne contient aucun kit de revente de connexion, de pub ni de pistage, ne lit pas le presse-papiers, ne contacte que
+# les adresses prévues et ne demande pas de permission de plus. Né de l'analyse de Rave (claude/cowatch-analyse-rave.md).
+name: Garantie zéro revente
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verif:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Vérifier le code
+        run: node zero-revente.js
+      - name: Vérifier que le garde-fou attrape bien chaque faute
+        run: node app/test/zero-revente-test.js

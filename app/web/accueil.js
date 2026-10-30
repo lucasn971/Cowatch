@@ -20,3 +20,26 @@
     sec.append(grid); box.append(sec);
   }
 })();
+
+// « Où va ta connexion » : l'appli Android donne ici, et seulement ici, la liste réelle des sites contactés depuis son ouverture.
+// Tout est écrit en texte (jamais en HTML) : un nom de site ne peut rien injecter dans la page.
+window.cowatchConfiance = d => {
+  const sec = document.getElementById('connexion'); if (!sec || !d) return;
+  const mo = n => n < 0 ? '?' : n < 1e6 ? Math.max(1, Math.round(n / 1e3)) + ' ko' : (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace('.', ',') + ' Mo';
+  const min = Math.max(1, Math.round((Date.now() - (d.depuis || Date.now())) / 60000));
+  document.getElementById('cx-resume').textContent =
+    `Depuis ${min} min : ${mo(d.envoye)} envoyés, ${mo(d.recu)} reçus par l'appli (voix, vidéo et pages comprises). Rien d'autre ne passe par ta connexion.`;
+  const remplir = (id, l, vide) => {
+    const ul = document.getElementById(id); ul.replaceChildren();
+    if (!l || !l.length) { const li = document.createElement('li'); li.className = 'vide'; li.textContent = vide; ul.append(li); return; }
+    for (const x of l) {
+      const li = document.createElement('li'), a = document.createElement('span'), b = document.createElement('span');
+      a.textContent = String(x.hote); b.textContent = x.n + (x.n > 1 ? ' demandes' : ' demande'); li.append(a, b); ul.append(li);
+    }
+  };
+  remplir('cx-salon', d.salon, 'Rien pour l\'instant.');
+  remplir('cx-sites', d.sites, 'Aucun site ouvert pour l\'instant.');
+  const bl = document.getElementById('cx-bloques'), nb = (d.bloques || []).reduce((t, x) => t + x.n, 0);
+  bl.hidden = !nb; bl.textContent = nb ? `${nb} demande(s) du salon vers une autre adresse bloquée(s) : ${(d.bloques || []).map(x => x.hote).join(', ')}.` : '';
+  sec.hidden = false;
+};

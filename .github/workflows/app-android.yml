@@ -4,7 +4,7 @@ name: Appli Android (APK d'essai)
 on:
   push:
     branches: [app-mobile]
-    paths: ["app/**", "coeur/**", "engine.js", "panel.html", "fonts/**", "icons/**", ".github/workflows/app-android.yml"]
+    paths: ["app/**", "coeur/**", "engine.js", "panel.html", "fonts/**", "icons/**", "zero-revente.js", ".github/workflows/app-android.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,9 +23,18 @@ jobs:
         run: |
           node --check app/web/coque.js
           bash app/outils/assembler-web.sh "$RUNNER_TEMP/www"
+      - name: Garantie « zéro revente » (code)
+        run: node zero-revente.js
       - name: Construire l'APK d'essai
         working-directory: app/android
         run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+      # Ce que l'appli fabriquée contient vraiment : permissions après fusion des bibliothèques, et toutes les bibliothèques tirées.
+      - name: Garantie « zéro revente » (APK fabriqué)
+        run: |
+          (cd app/android && ./gradlew --no-daemon -q :app:dependencies --configuration debugRuntimeClasspath) > "$RUNNER_TEMP/deps.txt"
+          MF=$(find app/android/app/build/intermediates -path '*debug*' -name AndroidManifest.xml | grep -i merged | head -1)
+          echo "Manifeste fusionné : $MF"
+          node zero-revente.js --manifeste "$MF" --deps "$RUNNER_TEMP/deps.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: cowatch-android-essai

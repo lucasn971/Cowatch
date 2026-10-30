@@ -22,12 +22,13 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   }).listen(APP_PORT);
 
   const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
-  const errs = [];
+  const errs = [], hotesSalon = new Set();
   const tel = async nom => {
     const ctx = await browser.newContext({ permissions: ['microphone'] });
     const t = new Telephone(ctx, nom, { www: WWW, base: APP });
     await t.ouvrir(`${APP}salon.html?tab=1&layout=bas&appv=0.1.0&server=${encodeURIComponent(BASE)}`);
     for (const p of [t.salon, t.lecteur]) p.on('pageerror', e => errs.push(`${nom} ${e.message}`));
+    t.salon.on('request', r => { try { hotesSalon.add(new URL(r.url()).hostname); } catch (e) {} });
     return t;
   };
 
@@ -97,6 +98,8 @@ const until = async (f, ms = 8000) => { const t = Date.now(); while (Date.now() 
   await sleep(400);
   ok(B.store.name === 'Agathe' && B.log.refused.includes('storage.set') && B.log.refused.includes('open') && !B.log.open.includes('https://exemple.invalid'), 'le lecteur n\'a droit qu\'à lire l\'invitation : écriture et ouverture de page refusées');
 
+  // Même règle que l'appli (Android : shouldInterceptRequest, iPhone : règles WebKit) : le salon ne joint que Cowatch et les polices.
+  ok([...hotesSalon].every(h => ['localhost', 'fonts.googleapis.com', 'fonts.gstatic.com'].includes(h)), `zéro revente : le salon n'a contacté que le serveur Cowatch et les polices (${[...hotesSalon].join(', ')})`);
   ok(!errs.length, `aucune erreur JavaScript (${errs.slice(0, 3).join(' | ')})`);
   await browser.close(); files.close();
 })().catch(e => { console.error(e); process.exitCode = 1; process.exit(); });

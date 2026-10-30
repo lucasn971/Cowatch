@@ -1,6 +1,6 @@
 # Cowatch — l'appli téléphone (Android, iPhone)
 
-Version d'essai **0.1.1**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
+Version d'essai **0.1.2**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
 
 ## Le principe (« mode B » de l'étude « Cowatch partout »)
 Comme Rave : le site du service (Netflix, Crunchyroll, ADN, Canal+…) s'affiche **dans** l'appli, et Cowatch commande sa vidéo.
@@ -40,6 +40,19 @@ Analyse de Rave pour Mac 1.17.12 (fichiers de l'appli, sans recopier de code) : 
 - **« Me déconnecter de tous les sites »** sur l'accueil (Rave a un gestionnaire de cookies).
 - **Pas repris** : le lecteur maison de Rave, qui imite les applis officielles auprès des serveurs privés des services (Netflix MSL, licences Widevine) ; les 5 kits qui revendent la connexion des utilisateurs (Honeygain, Infatica, Pawns, Repocket, Switchboard) ; la pub ; le « domain fronting ».
 
+## Garantie « zéro revente » (0.1.2, 30/10)
+L'analyse de **toutes les versions téléchargeables de Rave** (Windows 1.18.28, Mac 1.17.12) montre au moins **12 kits qui revendent
+la connexion des utilisateurs** sur Windows, un partage « obligatoire pour utiliser Rave », et un module qui surveille le presse-papiers.
+Cowatch promet l'inverse, et une machine le vérifie :
+- `zero-revente.js` (racine du dépôt) fait échouer la construction si un kit de bande passante, de pub ou de pistage apparaît, si le code
+  contacte une adresse hors liste (serveur Cowatch, polices, sites des services), s'il lit le presse-papiers ou demande la caméra,
+  ou si l'appli / l'extension demande une permission ou une bibliothèque de plus. Dans l'atelier GitHub, il vérifie aussi l'APK
+  fabriqué (permissions après fusion, bibliothèques tirées). `app/test/zero-revente-test.js` plante 15 fautes pour prouver qu'il les attrape.
+- **Salon bridé** : l'écran du salon ne peut joindre que le serveur Cowatch et les polices (Android : `shouldInterceptRequest` ;
+  iPhone : règles WebKit). Le reste est bloqué.
+- **« Où va ta connexion »** sur l'accueil (Android) : sites contactés depuis l'ouverture, séparés entre le salon et les sites regardés,
+  demandes bloquées, volume envoyé et reçu. Le journal reste dans le téléphone (`Connexions.kt`).
+
 ## Construire l'APK d'essai
 - **Automatique** : chaque envoi sur `app-mobile` lance l'atelier GitHub `.github/workflows/app-android.yml` ;
   l'APK se télécharge dans l'onglet *Actions* du dépôt › dernière exécution › *Artifacts* › `cowatch-android-essai`.
@@ -49,7 +62,7 @@ Analyse de Rave pour Mac 1.17.12 (fichiers de l'appli, sans recopier de code) : 
 - Essai avec le serveur de l'ordinateur (émulateur) : `adb shell am start -n fr.cowatch.app/.MainActivity -e server http://10.0.2.2:8080`.
 
 ## Tester sans téléphone
-`node server.js` puis `node app/test/coque-e2e.js` : deux téléphones simulés (salon + lecteur injecté, pont natif simulé
+`node zero-revente.js`, `node app/test/zero-revente-test.js`, `node app/test/accueil-test.js`, puis `node server.js` et `node app/test/coque-e2e.js` : deux téléphones simulés (salon + lecteur injecté, pont natif simulé
 par `app/test/natif-simule.js`, même contrat que `Pont.kt`). Vérifie : vidéo détectée, création du salon, invitation par
 la feuille de partage, entrée automatique par le lien, voix, lecture / pause / position calées, chat sur la vidéo,
 languette qui rouvre le salon, refus des appels interdits depuis la page du site.
@@ -68,7 +81,7 @@ Résultat de chaque site → `etat` dans `sites.json` (« ok », « flou », « 
 - **Lien d'invitation qui ouvre l'appli** : il faut publier `/.well-known/assetlinks.json` sur le serveur avec l'empreinte de
   la clé de signature (à faire avec la clé définitive). En attendant : `cowatch://j/CODE`, ou coller le lien dans le salon.
 - **Identifiant** `fr.cowatch.app` : définitif une fois sur Google Play, à confirmer par Lucas.
-- **Icône** : reprise de l'extension (rond rouge-orangé, contraire à la règle de couleurs) : à redessiner par Design.
+- **Icône** : v1 proposée par Design le 29/10 (jade), à valider par Lucas avant intégration.
 - **Règles** : conditions d'utilisation des services et règle Google « webview spam » à faire vérifier avant toute publication.
 - **iPhone** (`app/ios`, Swift, XcodeGen) : même pont, jamais construit (pas de Mac ici) ; iPhone mis de côté jusqu'au 5/12.
   Limites probables : vidéos protégées (FairPlay) dans l'appli, plein écran natif d'iOS sans nos surcouches, voix en arrière-plan.

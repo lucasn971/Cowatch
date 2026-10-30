@@ -49,6 +49,7 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 
 /**
  * Cowatch sur Android, « mode B » : le site du service s'affiche dans l'appli (comme Rave), avec le calage de l'extension.
@@ -64,6 +65,7 @@ class MainActivity : ComponentActivity(), Hote {
 
     private lateinit var sites: Sites
     private lateinit var stockage: Stockage
+    private lateinit var connexions: Connexions
     private lateinit var pont: Pont
     private lateinit var racine: FrameLayout
     private lateinit var contenu: LinearLayout
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity(), Hote {
         }
         sites = Sites(this)
         stockage = Stockage(this)
+        connexions = Connexions(serveursSalon())
         WebView.setWebContentsDebuggingEnabled(0 != (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE))
         construireEcran()
         reglerSalon()
@@ -190,12 +193,15 @@ class MainActivity : ComponentActivity(), Hote {
         if (::salon.isInitialized) disposer()
     }
 
+    /** Le serveur Cowatch (et, en développement seulement, le serveur d'essai de l'ordinateur). */
+    private fun essai(): String? = intent?.getStringExtra("server")?.takeIf { 0 != (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) }
+    private fun serveursSalon(): Set<String> = setOfNotNull(Uri.parse(sites.serveur).host, essai()?.let { Uri.parse(it).host })
+
     private fun urlSalon(): String {
         val version = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
         var url = "${Pont.BASE_APP}salon.html?tab=1&appv=${Uri.encode(version)}&layout=${if (paysage()) "cote" else "bas"}"
         // Essais en développement seulement : serveur Cowatch lancé sur l'ordinateur (adb … -e server http://10.0.2.2:8080).
-        val essai = intent?.getStringExtra("server")
-        if (essai != null && 0 != (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE)) url += "&server=${Uri.encode(essai)}"
+        essai()?.let { url += "&server=${Uri.encode(it)}" }
         return url
     }
 
@@ -208,8 +214,13 @@ class MainActivity : ComponentActivity(), Hote {
             allowFileAccess = false; allowContentAccess = false
         }
         salon.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                chargeur.shouldInterceptRequest(request.url)
+            // Garantie « zéro revente » : l'écran du salon ne joint que l'appli, le serveur Cowatch et les polices.
+            // Toute autre adresse (pub, mesure, kit glissé par erreur dans le code) est bloquée et notée dans « Où va ta connexion ».
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (!connexions.salon(request.url.host))
+                    return WebResourceResponse("text/plain", "utf-8", 403, "Bloque par Cowatch", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+                return chargeur.shouldInterceptRequest(request.url)
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (request.url.host == HOTE_APP) return false
                 ouvrirDehors(request.url); return true
@@ -256,6 +267,10 @@ class MainActivity : ComponentActivity(), Hote {
                     if (Uri.parse(view.url ?: "").host == HOTE_APP) oublierSites()
                     return true
                 }
+                if (u.scheme == "cowatch" && u.host == "connexions") {
+                    if (Uri.parse(view.url ?: "").host == HOTE_APP) montrerConnexions(view)
+                    return true
+                }
                 if (u.host == HOTE_APP) { appliquerUa(false); return false }
                 if (!sites.autorise(u)) {
                     // Hors liste (aide, paiement, connexion Google…) : le navigateur du téléphone, jamais notre lecteur.
@@ -268,13 +283,17 @@ class MainActivity : ComponentActivity(), Hote {
             }
             // Notre accueil et nos polices, servis depuis l'appli (avec l'en-tête qui permet aux pages des services de les lire).
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                connexions.site(request.url.host)
                 if (request.url.host != HOTE_APP) return null
                 val r = chargeur.shouldInterceptRequest(request.url) ?: return null
                 r.responseHeaders = HashMap(r.responseHeaders ?: emptyMap()).apply { put("Access-Control-Allow-Origin", "*") }
                 return r
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { majAdresse(url) }
-            override fun onPageFinished(view: WebView, url: String?) { majAdresse(url); if (::pont.isInitialized) pont.ongletChange() }
+            override fun onPageFinished(view: WebView, url: String?) {
+                majAdresse(url); if (::pont.isInitialized) pont.ongletChange()
+                if (Uri.parse(url ?: "").host == HOTE_APP) montrerConnexions(view)
+            }
             override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) { majAdresse(url); if (::pont.isInitialized) pont.ongletChange() }
             // Certificat douteux : on n'ouvre pas la page (Rave ignore ces erreurs).
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) { handler.cancel() }
@@ -331,6 +350,12 @@ class MainActivity : ComponentActivity(), Hote {
         WebStorage.getInstance().deleteAllData()
         lecteur.clearCache(true)
         Toast.makeText(this, R.string.sites_oublies, Toast.LENGTH_LONG).show()
+    }
+
+    /** Donne à notre accueil (et à lui seul) le journal « Où va ta connexion ». */
+    private fun montrerConnexions(view: WebView) {
+        if (Uri.parse(view.url ?: "").host != HOTE_APP) return
+        view.evaluateJavascript("window.cowatchConfiance && window.cowatchConfiance(${connexions.etat()})", null)
     }
 
     private fun ouvrirDehors(u: Uri) {

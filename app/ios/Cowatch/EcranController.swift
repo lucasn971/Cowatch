@@ -54,8 +54,34 @@ final class EcranController: UIViewController, Hote, WKNavigationDelegate, WKUID
         var c = URLComponents(url: www.appendingPathComponent("salon.html"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "tab", value: "1"), URLQueryItem(name: "layout", value: paysage ? "cote" : "bas"),
                         URLQueryItem(name: "appv", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")]
-        salon.loadFileURL(c.url!, allowingReadAccessTo: www)
+        let page = c.url!
+        // Garantie « zéro revente » : l'écran du salon ne joint que nos fichiers, le serveur Cowatch et les polices.
+        brider(salon.configuration.userContentController) { [weak self] in
+            guard let self = self else { return }
+            self.salon.loadFileURL(page, allowingReadAccessTo: self.www)
+        }
         if let l = lienEnAttente { lienEnAttente = nil; lienRecu(l) } else { naviguer(www.appendingPathComponent("accueil.html")) }
+    }
+
+    /// Règles WebKit : tout est bloqué pour l'écran du salon, sauf nos fichiers, le serveur Cowatch et les polices.
+    /// (Les filtres de WebKit n'acceptent pas « a|b » : une règle par adresse permise.)
+    private func brider(_ ucc: WKUserContentController, puis: @escaping () -> Void) {
+        let hote = URL(string: sites.serveur)?.host ?? "salon-coche-private.onrender.com"
+        var filtres = ["^file:", "^data:", "^blob:"]
+        for h in [hote, "fonts.googleapis.com", "fonts.gstatic.com"] {
+            let e = NSRegularExpression.escapedPattern(for: h)
+            filtres += ["^https://\(e)[/:]", "^wss://\(e)[/:]"]
+        }
+        var regles: [[String: Any]] = [["trigger": ["url-filter": ".*"], "action": ["type": "block"]]]
+        regles += filtres.map { f -> [String: Any] in ["trigger": ["url-filter": f], "action": ["type": "ignore-previous-rules"]] }
+        guard let donnees = try? JSONSerialization.data(withJSONObject: regles), let json = String(data: donnees, encoding: .utf8) else { puis(); return }
+        WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "cowatch-salon", encodedContentRuleList: json) { liste, _ in
+            DispatchQueue.main.async {
+                if let liste = liste { ucc.add(liste) }
+                // Si WebKit refuse les règles, le salon s'ouvre quand même : le garde-fou de construction reste la protection principale.
+                puis()
+            }
+        }
     }
 
     // ---------- Écran ----------

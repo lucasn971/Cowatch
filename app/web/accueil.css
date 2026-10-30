@@ -35,3 +35,14 @@ h2 { font: 600 13px var(--display); letter-spacing: .14em; text-transform: upper
 .oublier a { color: var(--accent) }
 .foot { font-size: 12px; color: var(--muted); margin-top: 16px }
 @media (prefers-reduced-motion: reduce) { .tile:active { transform: none } }
+h3 { font: 600 14px var(--display); margin: 16px 0 6px }
+.promesse, .connexion { margin-top: 22px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border) }
+.promesse h2, .connexion h2 { margin-top: 0 }
+.promesse ul { margin: 0; padding-left: 18px; color: var(--muted) }
+.promesse li { margin: 4px 0 }
+.promesse li b { color: var(--text) }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0 }
+.hotes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px }
+.hotes li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: var(--surface2); font-size: 13px; overflow-wrap: anywhere }
+.hotes li span:last-child { color: var(--muted); flex: none }
+.hotes li.vide { color: var(--muted) }
