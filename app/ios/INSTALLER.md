@@ -1,6 +1,6 @@
 # Installer Cowatch sur ton iPhone depuis ton Mac (gratuit)
 
-Pour Lucas. Durée : 30 à 45 min la première fois (surtout le téléchargement de Xcode), 5 min ensuite.
+Pour Lucas. ✅ Le code compile pour iPhone (atelier GitHub vert le 03/11, commit 75c7d8a). Durée : 30 à 45 min la première fois (surtout le téléchargement de Xcode), 5 min ensuite.
 Gratuit : compte Apple ordinaire, pas d'abonnement développeur (99 $/an = seulement pour TestFlight ou l'App Store, décision à part).
 Limites du compte gratuit : l'appli **s'arrête au bout de 7 jours** (il suffit de refaire l'étape 6), 3 applis perso maximum sur l'iPhone.
 
@@ -18,7 +18,7 @@ Limites du compte gratuit : l'appli **s'arrête au bout de 7 jours** (il suffit 
 Dans Terminal :
 ```
 cd ~/Documents
-git clone -b app-mobile https://github.com/lucasn971/salon.-coche-private- cowatch
+git clone -b app-mobile https://github.com/lucasn971/Cowatch.git cowatch
 cd cowatch/app/ios
 ```
 (Si le dépôt est passé en privé, GitHub demandera de te connecter : suis ses instructions.)
