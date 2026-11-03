@@ -6,6 +6,8 @@
 name: Cowatch
 options:
   bundleIdPrefix: fr.cowatch
+  # Format de projet lisible par Xcode 15.3 et plus récent (le Mac de Lucas comme ceux de GitHub).
+  projectFormat: xcode15_3
   deploymentTarget:
     iOS: "16.0"
 targets:

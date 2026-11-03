@@ -15,10 +15,17 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ios:
-    runs-on: macos-15
+    # macos-14 : les Mac « macos-15 » de GitHub sont saturés (03/11 : tâche jamais prise après 15 min d'attente).
+    runs-on: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Choisir le Xcode le plus récent du Mac
+        run: |
+          ls -d /Applications/Xcode*.app
+          X=$(ls -d /Applications/Xcode_1[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$X" ]; then sudo xcode-select -s "$X/Contents/Developer"; fi
+          xcodebuild -version
       - name: Garantie « zéro revente » (code)
         run: node zero-revente.js
       - name: Assembler les pages web (cœur commun)
