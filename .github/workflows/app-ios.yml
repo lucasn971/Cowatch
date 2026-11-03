@@ -1,0 +1,55 @@
+# Vérifie que l'appli iPhone de Cowatch se construit, sur un Mac de GitHub, à chaque envoi sur la branche app-mobile
+# qui touche l'appli. Construction SANS signature : elle prouve que le code compile ; l'installation sur l'iPhone de
+# Lucas se fait depuis son propre Mac avec Xcode et son compte Apple gratuit (guide : app/ios/INSTALLER.md).
+# ⚠️ Minutes macOS comptées ×10 si le dépôt est privé : l'atelier ne se lance que si un fichier de l'appli change.
+name: Appli iPhone (construction d'essai)
+on:
+  push:
+    branches: [app-mobile]
+    paths: ["app/ios/**", "app/web/**", "app/outils/**", "coeur/**", "engine.js", "panel.html", "zero-revente.js", ".github/workflows/app-ios.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: app-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Garantie « zéro revente » (code)
+        run: node zero-revente.js
+      - name: Assembler les pages web (cœur commun)
+        run: bash app/outils/assembler-web.sh app/ios/build-web/www
+      - name: Fabriquer le projet Xcode (XcodeGen)
+        working-directory: app/ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Construire pour iPhone (sans signature)
+        working-directory: app/ios
+        run: |
+          xcodebuild -project Cowatch.xcodeproj -scheme Cowatch -configuration Debug \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      # Garantie « zéro revente » sur l'appli fabriquée : aucune bibliothèque tierce embarquée.
+      - name: Garantie « zéro revente » (appli fabriquée)
+        working-directory: app/ios
+        run: |
+          APP=build/Build/Products/Debug-iphoneos/Cowatch.app
+          test -d "$APP"
+          if [ -d "$APP/Frameworks" ] && [ -n "$(ls -A "$APP/Frameworks")" ]; then
+            echo "Bibliothèque embarquée inattendue :"; ls "$APP/Frameworks"; exit 1
+          fi
+          /usr/libexec/PlistBuddy -c 'Print' "$APP/Info.plist"
+          du -sh "$APP"
+      - name: Ranger l'appli (non signée)
+        working-directory: app/ios/build/Build/Products/Debug-iphoneos
+        run: ditto -c -k --keepParent Cowatch.app "$RUNNER_TEMP/cowatch-iphone-non-signee.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cowatch-iphone-non-signee
+          path: ${{ runner.temp }}/cowatch-iphone-non-signee.zip
+          retention-days: 14

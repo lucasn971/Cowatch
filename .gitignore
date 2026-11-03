@@ -1,3 +1,6 @@
 testlive/seg/
 testlive/dseg/
 cowatch-store.zip
+app/ios/build-web/
+app/ios/build/
+app/ios/Cowatch.xcodeproj/
