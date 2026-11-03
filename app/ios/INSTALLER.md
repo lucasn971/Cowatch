@@ -6,6 +6,7 @@ Limites du compte gratuit : l'appli **s'arrête au bout de 7 jours** (il suffit 
 
 ## 1. Préparer le Mac (une seule fois)
 1. App Store du Mac → chercher **Xcode** → Obtenir (gratuit, ≈ 10 Go, compter 20-40 min).
+   Il faut **Xcode 15.3 ou plus récent** (donc macOS 14 Sonoma ou plus récent sur le Mac) et un iPhone sous **iOS 16 ou plus récent**. L'atelier GitHub construit l'appli avec Xcode 16.2 : c'est vérifié à chaque envoi.
 2. Ouvrir Xcode une fois, accepter la licence, laisser installer les composants. S'il propose « iOS » dans les plateformes à télécharger, accepter.
 3. Xcode → menu **Xcode › Settings › Accounts** → « + » → **Apple ID** → te connecter avec ton compte Apple habituel. *(C'est toi qui tapes ton mot de passe, jamais Claude.)*
 4. Installer Homebrew puis XcodeGen, dans l'appli **Terminal** :
