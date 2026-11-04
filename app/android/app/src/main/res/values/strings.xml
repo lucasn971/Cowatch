@@ -14,4 +14,12 @@
     <string name="micro_refuse">Sans micro, tu peux quand même écrire et réagir.</string>
     <string name="hors_liste">Ce site n\'est pas dans la liste de Cowatch : il s\'ouvre dans ton navigateur.</string>
     <string name="sites_oublies">Déconnecté de tous les sites : tes comptes ne sont plus enregistrés dans Cowatch.</string>
+    <string name="acces_titre">Caler %1$s avec ton salon</string>
+    <string name="acces_texte">Pour suivre la lecture dans l\'appli %1$s (lecture, pause, position) et la caler avec tes amis, Android demande l\'« accès aux notifications » pour Cowatch.\n\nCowatch ne lit aucune notification : il voit seulement si la vidéo joue, où elle en est, et peut faire lecture / pause / aller à. Comme une télécommande Bluetooth.\n\nDans l\'écran qui s\'ouvre, active Cowatch, puis reviens ici.</string>
+    <string name="acces_ouvrir">Ouvrir les réglages</string>
+    <string name="plus_tard">Plus tard</string>
+    <string name="bulle_titre">Le salon par-dessus la vidéo ?</string>
+    <string name="bulle_texte">Pendant que tu regardes dans %1$s, Cowatch peut garder le salon (chat, réactions) dans une petite bulle par-dessus. Il faut l\'autoriser à « s\'afficher par-dessus les autres applis ».\n\nSans la bulle, la voix et le calage marchent quand même ; tu peux aussi mettre Cowatch et %1$s côte à côte (écran partagé).</string>
+    <string name="sans_bulle">Sans la bulle</string>
+    <string name="appli_absente">%1$s n\'est pas installée sur ce téléphone.</string>
 </resources>

@@ -43,3 +43,37 @@ window.cowatchConfiance = d => {
   bl.hidden = !nb; bl.textContent = nb ? `${nb} demande(s) du salon vers une autre adresse bloquée(s) : ${(d.bloques || []).map(x => x.hote).join(', ')}.` : '';
   sec.hidden = false;
 };
+
+// Mode A (Android) : regarder dans l'appli officielle. L'appli Android appelle cowatchApplis(état) sur cet accueil ;
+// sur iPhone (aucune appli ne peut commander une autre appli) ou dans un navigateur, la section reste cachée.
+let applisChargees = null;
+window.cowatchApplis = async e => {
+  if (!e || !e.android) return;
+  const sec = document.getElementById('applis'); if (!sec) return;
+  if (!applisChargees) {
+    try { applisChargees = (await (await fetch('applis.json')).json()).applis; } catch (x) { return; }
+    const g = document.getElementById('applis-grille');
+    for (const a of applisChargees) {
+      const t = document.createElement('a'); t.className = 'tile'; t.href = 'cowatch://appli/' + encodeURIComponent(a.id); t.dataset.id = a.id;
+      const n = document.createElement('span'); n.className = 'name'; n.textContent = a.nom;
+      const d = document.createElement('span'); d.className = 'dom'; d.textContent = 'appli officielle';
+      t.append(n, d);
+      if (a.etat === 'a-tester') { const s2 = document.createElement('span'); s2.className = 'state'; s2.textContent = 'à tester'; t.append(s2); }
+      g.append(t);
+    }
+    sec.hidden = false; document.getElementById('t-sites').hidden = false;
+  }
+  for (const t of document.querySelectorAll('#applis-grille .tile')) t.classList.toggle('choisie', t.dataset.id === e.choisie);
+  const etat = document.getElementById('applis-etat');
+  const choisie = applisChargees.find(a => a.id === e.choisie);
+  let txt = '';
+  if (!e.autorise) txt = 'Au premier choix, Android te demandera l\'« accès aux notifications » pour Cowatch : il sert seulement à voir où en est la vidéo.';
+  else if (!choisie) txt = 'Choisis ton appli : elle s\'ouvre, et Cowatch suit la lecture.';
+  else if (e.ok) txt = `${e.nom || choisie.nom} : ${e.etat === 'playing' ? 'en lecture' : 'en pause'}${e.titre ? ' · ' + e.titre : ''}. Calage actif.`;
+  else txt = `${choisie.nom} : lance un épisode dans l'appli, Cowatch le verra tout de suite.`;
+  if (e.inconnue) txt += ` (Une autre appli joue : ${e.inconnue}. Elle n'est pas dans la liste de Cowatch.)`;
+  etat.textContent = txt;
+  let fin = document.getElementById('applis-fin');
+  if (choisie && !fin) { fin = document.createElement('a'); fin.id = 'applis-fin'; fin.href = 'cowatch://appli-fin'; fin.textContent = 'Arrêter le calage de l\'appli'; etat.after(fin); }
+  if (!choisie && fin) fin.remove();
+};

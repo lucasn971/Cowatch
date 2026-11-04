@@ -1,6 +1,6 @@
 # Cowatch — l'appli téléphone (Android, iPhone)
 
-Version d'essai **0.1.2**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
+Version d'essai **0.1.3**, branche `app-mobile`. **Pas en ligne, pas sur les stores.** Rien n'est publié sans l'accord de Lucas.
 
 ## Le principe (« mode B » de l'étude « Cowatch partout »)
 Comme Rave : le site du service (Netflix, Crunchyroll, ADN, Canal+…) s'affiche **dans** l'appli, et Cowatch commande sa vidéo.
@@ -39,6 +39,23 @@ Analyse de Rave pour Mac 1.17.12 (fichiers de l'appli, sans recopier de code) : 
 - **« Y aller »** : quand quelqu'un passe à l'épisode suivant, les autres reçoivent une proposition (message serveur `page`). Rave le fait avec un « meneur » qui impose la vidéo ; ici, chacun choisit.
 - **« Me déconnecter de tous les sites »** sur l'accueil (Rave a un gestionnaire de cookies).
 - **Pas repris** : le lecteur maison de Rave, qui imite les applis officielles auprès des serveurs privés des services (Netflix MSL, licences Widevine) ; les 5 kits qui revendent la connexion des utilisateurs (Honeygain, Infatica, Pawns, Repocket, Switchboard) ; la pub ; le « domain fronting ».
+
+## Mode A (0.1.3, 04/11) : regarder dans l'appli officielle (Android)
+Demande de Lucas (04/11) : une appli qui marche avec **toutes les applis** (Netflix, Canal+, Crunchyroll… dans leurs propres applis).
+- **Android : oui.** Avec l'accord de l'utilisateur (« accès aux notifications »), Android laisse une appli voir et commander le
+  lecteur des autres applis (lecture, pause, position, aller à) : c'est l'outil public des montres et télécommandes Bluetooth
+  (`MediaSessionManager` + `MediaController.TransportControls`). Aucune protection contournée, aucune notification lue
+  (`EcouteNotifications.kt` est vide, vérifié par `zero-revente.js`). Une appli qui ne publie pas son lecteur à Android ne
+  pourra pas être calée : c'est ce que dira l'essai, appli par appli (`app/web/applis.json`, `etat`).
+- **Comment** : `AppliOfficielle.kt` lit le lecteur de l'appli choisie ; une page cachée `pilote.html` le présente au cœur comme
+  une `<video>` (`app/web/pilote.js`) : `coeur/player.js` tourne **sans modification** (calage, pilote, pauses). Salon dans une
+  **bulle** par-dessus l'appli (`Bulle.kt`, autorisation « afficher par-dessus », facultative) ; sinon écran partagé.
+- **Limites connues** : pas de calage fin du direct (l'heure de l'image n'est pas donnée par les applis) ; le ralenti n'existe
+  pas (on recale par « aller à ») ; certaines applis ignorent « aller à ». Jamais essayé sur un vrai téléphone.
+- **iPhone : impossible.** iOS interdit à toute appli de voir ou commander le lecteur d'une autre appli. Seul SharePlay
+  (Apple) le fait, et c'est à chaque service de l'intégrer (Disney+ oui, Netflix non). Sur iPhone, Cowatch reste le site du
+  service dans l'appli (mode B) ou un compagnon (voix, chat, calage manuel « TOP »).
+- Test sans téléphone : `node app/test/appli-officielle-e2e.js` (Netflix simulé ↔ salon ↔ site, 13 points).
 
 ## Garantie « zéro revente » (0.1.2, 30/10)
 L'analyse de **toutes les versions téléchargeables de Rave** (Windows 1.18.28, Mac 1.17.12) montre au moins **12 kits qui revendent

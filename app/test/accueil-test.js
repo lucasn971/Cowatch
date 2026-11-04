@@ -18,7 +18,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   await pg.route('**/*', r => { const u = new URL(r.request().url()); if (u.hostname !== 'localhost') { ext.push(u.hostname); return r.abort(); } r.continue(); });
   await pg.goto('http://localhost:8093/accueil.html');
   await pg.waitForSelector('.tile');
-  ok(await pg.locator('.promesse li').count() === 4 && (await pg.textContent('.promesse')).includes('Revendre ta connexion'), 'accueil : la promesse « ce que Cowatch ne fera jamais » est affichée');
+  ok(await pg.locator('.promesse li').count() === 5 && (await pg.textContent('.promesse')).includes('notifications') && (await pg.textContent('.promesse')).includes('Revendre ta connexion'), 'accueil : la promesse « ce que Cowatch ne fera jamais » est affichée');
   ok(await pg.isHidden('#connexion'), 'sans l\'appli Android (iPhone, essai) : pas de journal vide affiché');
   ok(ext.every(h => /^fonts\.(googleapis|gstatic)\.com$/.test(h)), `l'accueil ne contacte que les polices (${[...new Set(ext)].join(', ') || 'rien'})`);
   await pg.evaluate(() => window.cowatchConfiance({
@@ -33,6 +33,17 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok(await pg.isVisible('#cx-bloques') && (await pg.textContent('#cx-bloques')).includes('collecte.exemple.com'), 'les demandes bloquées sont montrées');
   ok(!(await pg.evaluate(() => window.__pirate)) && await pg.locator('#cx-sites img').count() === 0, 'un nom de site piégé reste du texte (rien d\'injecté)');
   ok(await pg.evaluate(() => document.documentElement.scrollWidth <= 360), 'pas de défilement de côté sur un téléphone (360 px)');
+  // Mode A : la section « Dans l'appli officielle » n'apparaît que sur Android (l'appli appelle cowatchApplis).
+  ok(await pg.isHidden('#applis'), 'sans Android : pas de section « appli officielle » (iPhone, navigateur)');
+  await pg.evaluate(() => window.cowatchApplis({ android: true, autorise: false, ok: false, etat: 'none', choisie: null }));
+  await pg.waitForSelector('#applis:not([hidden]) .tile');
+  const tuiles = await pg.$$eval('#applis-grille .tile', l => l.map(a => a.getAttribute('href')));
+  ok(tuiles.length >= 6 && tuiles.includes('cowatch://appli/netflix') && tuiles.includes('cowatch://appli/canalplus'), `Android : ${tuiles.length} applis officielles proposées (Netflix, Canal+…)`);
+  ok((await pg.textContent('#applis-etat')).includes('accès aux notifications'), 'avant l\'autorisation : on explique à quoi elle sert');
+  await pg.evaluate(() => window.cowatchApplis({ android: true, autorise: true, ok: true, etat: 'playing', choisie: 'netflix', nom: 'Netflix', titre: 'Épisode 3' }));
+  ok((await pg.textContent('#applis-etat')).includes('Netflix : en lecture · Épisode 3') && await pg.locator('#applis-fin').count() === 1, 'appli choisie : état de la lecture affiché, bouton pour arrêter');
+  ok(await pg.locator('.tile.choisie[data-id="netflix"]').count() === 1, 'la tuile de l\'appli choisie est marquée');
+  ok(await pg.evaluate(() => document.documentElement.scrollWidth <= 360), 'toujours pas de défilement de côté avec la section des applis');
   ok(!errs.length, `aucune erreur JavaScript ${errs.join(' | ')}`);
   await b.close(); srv.close();
 })().catch(e => { console.error(e); process.exitCode = 1; process.exit(); });

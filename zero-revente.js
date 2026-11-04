@@ -70,6 +70,7 @@ const LECTURES = [
   [/getPrimaryClip|\bprimaryClip\b(?!\s*=)/, 'lecture du presse-papiers Android'],
   [/UIPasteboard\.general\.(string|strings|url|urls|image|images|items|hasStrings)\b(?!\s*=[^=])/, 'lecture du presse-papiers iPhone'],
   [/document\.execCommand\(\s*['"]paste/, 'collage forcé'],
+  [/getActiveNotifications|getSnoozedNotifications|\bsbn\??\.(notification|key|packageName)\b|\.notification\??\.extras/, 'lecture des notifications (le mode A n\'a droit qu\'au lecteur vidéo)'],
   [/getUserMedia\s*\(\s*\{[^}]*\bvideo\s*:\s*(true|\{)|RESOURCE_VIDEO_CAPTURE|AVMediaType\.video|\.camera\b/, 'caméra demandée (Cowatch ne filme jamais)'],
 ];
 
@@ -90,7 +91,9 @@ for (const f of livres) {
 
 // ---------- 4. Permissions et bibliothèques ----------
 const PERMS_ANDROID = ['INTERNET', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MICROPHONE',
-  'FOREGROUND_SERVICE_MEDIA_PLAYBACK', 'POST_NOTIFICATIONS'].map(p => 'android.permission.' + p);
+  'FOREGROUND_SERVICE_MEDIA_PLAYBACK', 'POST_NOTIFICATIONS',
+  'SYSTEM_ALERT_WINDOW', // mode A : bulle du salon par-dessus l'appli officielle, accordée à la main par l'utilisateur, facultative
+].map(p => 'android.permission.' + p);
 // androidx.core ajoute d'elle-même une permission interne à l'appli (récepteurs non exportés) : sans effet hors de l'appli.
 const permInterne = p => /^fr\.cowatch\.app(\.debug)?\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$/.test(p);
 function verifierPermissions(fichier, attendu) {

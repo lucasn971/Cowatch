@@ -18,6 +18,9 @@ interface Hote {
     fun etatSalon(etat: JSONObject)
     fun ongletUrl(): String
     fun ongletTitre(): String
+    /** Mode A : état du lecteur de l'appli officielle, et commandes lecture / pause / aller à (AppliOfficielle). */
+    fun mediaEtat(): JSONObject
+    fun mediaCommande(fn: String, args: JSONObject)
 }
 
 /**
@@ -28,11 +31,15 @@ interface Hote {
  *
  * Sécurité (ce que Rave ne fait pas) : l'objet natif n'existe que dans les pages des origines autorisées
  * (WebViewCompat.addWebMessageListener), et le lecteur n'a droit qu'à lire l'invitation en attente.
+ *
+ * Mode A : une 3e page, « pilote » (notre page pilote.html, cachée), présente le lecteur de l'appli officielle comme une
+ * <video> au cœur. C'est le cadre n° 0. Elle n'a droit qu'à lire l'invitation et à lire / commander la lecture.
  */
 class Pont(
     private val hote: Hote,
     private val salon: WebView,
     private val lecteur: WebView,
+    private val pilote: WebView,
     private val stockage: Stockage,
     private val sites: Sites,
 ) {
@@ -41,7 +48,10 @@ class Pont(
         const val BASE_APP = "$ORIGINE_APP/assets/www/"
         private val APPELS_LECTEUR = setOf("storage.get")
         private val CLES_LECTEUR = setOf("pendingJoin")
+        private val APPELS_PILOTE = setOf("storage.get", "media.etat", "media.play", "media.pause", "media.seek")
+        const val PILOTE = 0
     }
+    private var piloteProxy: JavaScriptReplyProxy? = null
 
     private var salonProxy: JavaScriptReplyProxy? = null
     private val cadres = LinkedHashMap<Int, JavaScriptReplyProxy>()
@@ -63,6 +73,47 @@ class Pont(
             })
         // Comme les scripts de contenu de l'extension : dans la page du service et dans tous ses cadres, dès le début.
         WebViewCompat.addDocumentStartJavaScript(lecteur, scriptLecteur, regles)
+        // Mode A : la page pilote (la nôtre, servie par l'appli) ; seul son cadre principal compte.
+        WebViewCompat.addWebMessageListener(pilote, "CowatchNative", setOf(ORIGINE_APP),
+            WebViewCompat.WebMessageListener { _, message, _, isMainFrame, proxy ->
+                val data = message.data ?: return@WebMessageListener
+                if (isMainFrame) depuisPilote(data, proxy)
+            })
+    }
+
+    /** Tous les cadres qui jouent le rôle de « lecteur » : ceux de la page du service, et la page pilote du mode A. */
+    private fun tousLesCadres(): List<JavaScriptReplyProxy> = cadres.values.toList() + listOfNotNull(piloteProxy)
+    private fun cadre(id: Int): JavaScriptReplyProxy? = if (id == PILOTE) piloteProxy else cadres[id]
+
+    /** Mode A : nouvelle de l'appli officielle (lecture, pause, position…) vers la page pilote. */
+    fun media(etat: JSONObject) { piloteProxy?.let { versCadre(it, JSONObject().put("k", "event").put("name", "media").put("data", etat)) } }
+
+    private fun depuisPilote(data: String, proxy: JavaScriptReplyProxy) {
+        val env = try { JSONObject(data) } catch (e: Exception) { return }
+        when (env.optString("k")) {
+            "hello" -> piloteProxy = proxy
+            "bye" -> if (piloteProxy === proxy) piloteProxy = null
+            "msg" -> {
+                piloteProxy = proxy
+                if (env.optString("dir") != "salon") return
+                val sender = JSONObject().put("frameId", PILOTE).put("url", env.optString("url")).put("tab", onglet())
+                versSalon(JSONObject().put("k", "msg").put("id", env.opt("id")).put("msg", env.opt("msg")).put("sender", sender))
+            }
+            "reply" -> versSalon(JSONObject().put("k", "reply").put("id", env.opt("id")).put("value", env.opt("value")).put("none", env.optBoolean("none")))
+            "call" -> {
+                val id = env.opt("id"); val fn = env.optString("fn"); val args = env.optJSONObject("args") ?: JSONObject()
+                val rendre = { v: Any? -> versCadre(proxy, JSONObject().put("k", "ret").put("id", id).put("value", v ?: JSONObject.NULL)) }
+                when {
+                    fn !in APPELS_PILOTE -> versCadre(proxy, JSONObject().put("k", "ret").put("id", id).put("error", "refusé"))
+                    fn == "storage.get" -> {
+                        val demandees = args.optJSONArray("keys")
+                        rendre(stockage.lire((0 until (demandees?.length() ?: 0)).map { demandees!!.optString(it) }.filter { it in CLES_LECTEUR }))
+                    }
+                    fn == "media.etat" -> rendre(hote.mediaEtat())
+                    else -> { hote.mediaCommande(fn, args); rendre(JSONObject().put("ok", true)) }
+                }
+            }
+        }
     }
 
     // ---------- Vers les pages ----------
@@ -82,7 +133,7 @@ class Pont(
     /** Le salon est déplié ou replié : la page du service affiche ou cache sa languette « Cowatch ». */
     fun panneau(ouvert: Boolean) {
         val env = JSONObject().put("k", "msg").put("msg", JSONObject().put("t", "panel").put("open", ouvert))
-        for (p in cadres.values.toList()) versCadre(p, env)
+        for (p in tousLesCadres()) versCadre(p, env)
     }
 
     private fun changementsStockage(ch: JSONObject) {
@@ -92,7 +143,7 @@ class Pont(
         for (k in ch.keys()) if (k in CLES_LECTEUR) publics.put(k, ch.get(k))
         if (publics.length() > 0) {
             val env = JSONObject().put("k", "event").put("name", "storage").put("data", publics)
-            for (p in cadres.values.toList()) versCadre(p, env)
+            for (p in tousLesCadres()) versCadre(p, env)
         }
     }
     fun ecrireStockage(items: JSONObject) = changementsStockage(stockage.ecrire(items))
@@ -131,13 +182,13 @@ class Pont(
             "msg" -> {
                 if (env.optString("dir") != "lecteur") return
                 val id = env.opt("id")
-                val cibles = if (env.has("frameId") && !env.isNull("frameId")) listOfNotNull(cadres[env.optInt("frameId")]) else cadres.values.toList()
+                val cibles = if (env.has("frameId") && !env.isNull("frameId")) listOfNotNull(cadre(env.optInt("frameId"))) else tousLesCadres()
                 versSalon(JSONObject().put("k", "count").put("id", id).put("n", cibles.size))
                 val m = JSONObject().put("k", "msg").put("id", id).put("msg", env.opt("msg")).put("sender", JSONObject().put("id", "cowatch-app"))
                 for (p in cibles) versCadre(p, m)
             }
             "reply" -> {
-                val p = cadres[env.optInt("frameId", -1)] ?: return
+                val p = cadre(env.optInt("frameId", -1)) ?: return
                 versCadre(p, JSONObject().put("k", "reply").put("id", env.opt("id")).put("value", env.opt("value")).put("none", env.optBoolean("none")))
             }
             "call" -> appel(env.opt("id"), env.optString("fn"), env.optJSONObject("args") ?: JSONObject())

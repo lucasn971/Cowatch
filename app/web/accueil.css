@@ -46,3 +46,7 @@ h3 { font: 600 14px var(--display); margin: 16px 0 6px }
 .hotes li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: var(--surface2); font-size: 13px; overflow-wrap: anywhere }
 .hotes li span:last-child { color: var(--muted); flex: none }
 .hotes li.vide { color: var(--muted) }
+.applis .lead { margin-bottom: 12px }
+.tile.choisie { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset }
+#applis-fin { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--accent) }
+h2.ou { margin-top: 28px }

@@ -2,6 +2,8 @@ package fr.cowatch.app
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -15,6 +17,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -66,6 +69,13 @@ class MainActivity : ComponentActivity(), Hote {
     private lateinit var sites: Sites
     private lateinit var stockage: Stockage
     private lateinit var connexions: Connexions
+    private lateinit var appli: AppliOfficielle
+    private lateinit var bulle: Bulle
+    private lateinit var pilote: WebView
+    /** Mode A : l'appli officielle choisie (Netflix…), ou null en mode B (le site dans Cowatch). */
+    private var appliChoisie: Appli? = null
+    /** Une demande d'autorisation est partie vers les réglages d'Android : à reprendre au retour dans Cowatch. */
+    private var appliEnAttente: String? = null
     private lateinit var pont: Pont
     private lateinit var racine: FrameLayout
     private lateinit var contenu: LinearLayout
@@ -111,11 +121,14 @@ class MainActivity : ComponentActivity(), Hote {
         sites = Sites(this)
         stockage = Stockage(this)
         connexions = Connexions(serveursSalon())
+        appli = AppliOfficielle(this, lireApplis()) { etat -> if (::pont.isInitialized) pont.media(etat); montrerEtatAppli() }
+        bulle = Bulle(this) { revenirDansCowatch() }
         WebView.setWebContentsDebuggingEnabled(0 != (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE))
         construireEcran()
         reglerSalon()
         reglerLecteur()
-        pont = Pont(this, salon, lecteur, stockage, sites)
+        reglerPilote()
+        pont = Pont(this, salon, lecteur, pilote, stockage, sites)
         val script = assets.open("www/lecteur.js").bufferedReader().use { it.readText() }.replace("__COQUE_BASE_VALEUR__", Pont.BASE_APP)
         pont.installer(script)
         SalonService.surAction = { action -> runOnUiThread { pont.evenement(action) } }
@@ -160,6 +173,8 @@ class MainActivity : ComponentActivity(), Hote {
         barre.addView(bouton("Salon", "Déplier ou replier le salon") { montrerSalon(!salonVisible) }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44)))
         lecteur = WebView(this)
         salon = WebView(this)
+        // Mode A : la page pilote, invisible (1 px), qui présente le lecteur de l'appli officielle comme une vidéo au cœur.
+        pilote = WebView(this).apply { visibility = View.INVISIBLE }
         zoneLecteur.addView(barre, LinearLayout.LayoutParams(MATCH_PARENT, dp(44)))
         zoneLecteur.addView(lecteur, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
         contenu.addView(zoneLecteur)
@@ -167,6 +182,7 @@ class MainActivity : ComponentActivity(), Hote {
         pleinEcran = FrameLayout(this).apply { visibility = View.GONE; setBackgroundColor(Color.BLACK) }
         racine.addView(contenu, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         racine.addView(pleinEcran, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        racine.addView(pilote, FrameLayout.LayoutParams(1, 1))
         setContentView(racine)
         ViewCompat.setOnApplyWindowInsetsListener(racine) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
@@ -271,12 +287,18 @@ class MainActivity : ComponentActivity(), Hote {
                     if (Uri.parse(view.url ?: "").host == HOTE_APP) montrerConnexions(view)
                     return true
                 }
+                // Mode A, depuis notre accueil seulement : cowatch://appli/<id> (regarder dans l'appli officielle), cowatch://appli-fin.
+                if (u.scheme == "cowatch" && (u.host == "appli" || u.host == "appli-fin")) {
+                    if (Uri.parse(view.url ?: "").host == HOTE_APP) { if (u.host == "appli") choisirAppli(u.lastPathSegment ?: "") else arreterModeA() }
+                    return true
+                }
                 if (u.host == HOTE_APP) { appliquerUa(false); return false }
                 if (!sites.autorise(u)) {
                     // Hors liste (aide, paiement, connexion Google…) : le navigateur du téléphone, jamais notre lecteur.
                     if (u.scheme == "https" || u.scheme == "http") ouvrirDehors(u)
                     return true
                 }
+                if (appliChoisie != null) arreterModeA() // un seul lecteur à la fois : le site remplace l'appli officielle
                 val ordinateur = sites.siteDe(u.host)?.ordinateur == true
                 if (ordinateur != modeOrdinateur) { appliquerUa(ordinateur); view.loadUrl(u.toString()); return true }
                 return false
@@ -292,7 +314,7 @@ class MainActivity : ComponentActivity(), Hote {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { majAdresse(url) }
             override fun onPageFinished(view: WebView, url: String?) {
                 majAdresse(url); if (::pont.isInitialized) pont.ongletChange()
-                if (Uri.parse(url ?: "").host == HOTE_APP) montrerConnexions(view)
+                if (Uri.parse(url ?: "").host == HOTE_APP) { montrerConnexions(view); montrerEtatAppli() }
             }
             override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) { majAdresse(url); if (::pont.isInitialized) pont.ongletChange() }
             // Certificat douteux : on n'ouvre pas la page (Rave ignore ces erreurs).
@@ -433,6 +455,120 @@ class MainActivity : ComponentActivity(), Hote {
     override fun ongletUrl() = lecteur.url ?: ""
     override fun ongletTitre() = titre
 
+    override fun mediaEtat(): JSONObject = appli.etat()
+    override fun mediaCommande(fn: String, args: JSONObject) {
+        if (appliChoisie == null) return
+        when (fn) {
+            "media.play" -> appli.lecture()
+            "media.pause" -> appli.pause()
+            "media.seek" -> appli.allerA(args.optLong("ms"))
+        }
+    }
+
+    // ---------- Mode A : regarder dans l'appli officielle (Netflix, Canal+…) ----------
+    private fun lireApplis(): List<Appli> = try {
+        val o = JSONObject(assets.open("www/applis.json").bufferedReader().use { it.readText() })
+        val a = o.getJSONArray("applis")
+        (0 until a.length()).map { i ->
+            val x = a.getJSONObject(i); val p = x.getJSONArray("paquets")
+            Appli(x.getString("id"), x.getString("nom"), (0 until p.length()).map { p.getString(it) })
+        }
+    } catch (e: Exception) { emptyList() }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun reglerPilote() {
+        pilote.settings.apply { javaScriptEnabled = true; domStorageEnabled = false; allowFileAccess = false; allowContentAccess = false }
+        // La page pilote ne joint rien d'autre que ses propres fichiers.
+        pilote.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                if (request.url.host == HOTE_APP) chargeur.shouldInterceptRequest(request.url)
+                else WebResourceResponse("text/plain", "utf-8", 403, "Bloque par Cowatch", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = request.url.host != HOTE_APP
+        }
+        // Pendant qu'on regarde dans une autre appli, le salon et la page pilote doivent continuer à tourner.
+        for (w in listOf(salon, pilote)) w.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+    }
+
+    /** Toucher « Netflix (appli) » sur l'accueil : autorisation si besoin, puis on ouvre l'appli officielle. */
+    private fun choisirAppli(id: String) {
+        val a = appli.applis.firstOrNull { it.id == id } ?: return
+        if (!appli.autorise()) { demanderAccesLecteurs(a); return }
+        appliChoisie = a
+        pilote.loadUrl(Pont.BASE_APP + "pilote.html")
+        appli.demarrer()
+        if (!bulle.possible()) proposerBulle(a) else ouvrirAppliOfficielle(a)
+    }
+
+    /** L'« accès aux notifications » d'Android est le seul moyen de voir le lecteur des autres applis : on explique avant. */
+    private fun demanderAccesLecteurs(a: Appli) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.acces_titre, a.nom))
+            .setMessage(getString(R.string.acces_texte, a.nom))
+            .setPositiveButton(R.string.acces_ouvrir) { _, _ ->
+                appliEnAttente = a.id
+                val i = if (Build.VERSION.SDK_INT >= 30)
+                    Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                        .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, ComponentName(this, EcouteNotifications::class.java).flattenToString())
+                else Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                try { startActivity(i) } catch (e: Exception) { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+            }
+            .setNegativeButton(R.string.plus_tard, null)
+            .show()
+    }
+
+    /** La bulle (salon par-dessus Netflix) demande l'autorisation « afficher par-dessus » : facultative. */
+    private fun proposerBulle(a: Appli) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.bulle_titre)
+            .setMessage(getString(R.string.bulle_texte, a.nom))
+            .setPositiveButton(R.string.acces_ouvrir) { _, _ ->
+                appliEnAttente = a.id
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+            .setNegativeButton(R.string.sans_bulle) { _, _ -> ouvrirAppliOfficielle(a) }
+            .show()
+    }
+
+    private fun ouvrirAppliOfficielle(a: Appli) {
+        val lancer = a.paquets.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
+        if (lancer != null) { startActivity(lancer); return }
+        // Pas installée : sa page sur le store du téléphone.
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${a.paquets.first()}"))) }
+        catch (e: Exception) { Toast.makeText(this, getString(R.string.appli_absente, a.nom), Toast.LENGTH_LONG).show() }
+    }
+
+    private fun arreterModeA() {
+        appliChoisie = null
+        appli.arreter()
+        bulle.cacher()
+        pilote.loadUrl("about:blank")
+        montrerEtatAppli()
+    }
+
+    /** L'accueil (notre page) affiche l'état du mode A : autorisation, appli vue, lecture / pause, titre. */
+    private fun montrerEtatAppli() {
+        if (!::lecteur.isInitialized || Uri.parse(lecteur.url ?: "").host != HOTE_APP) return
+        val e = appli.etat().put("android", true).put("choisie", appliChoisie?.id ?: JSONObject.NULL).put("bulle", bulle.possible())
+        lecteur.evaluateJavascript("window.cowatchApplis && window.cowatchApplis($e)", null)
+    }
+
+    private fun revenirDansCowatch() {
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!::appli.isInitialized) return
+        // Retour des réglages d'Android : on reprend là où on en était.
+        appliEnAttente?.let { id ->
+            appliEnAttente = null
+            val a = appli.applis.firstOrNull { it.id == id }
+            if (a != null && appli.autorise()) { if (appliChoisie == null) choisirAppli(id) else ouvrirAppliOfficielle(a) }
+        }
+        if (appliChoisie != null) appli.demarrer()
+        montrerEtatAppli()
+    }
+
     // ---------- Lien d'invitation ----------
     private fun traiterLien(i: Intent?): Boolean {
         val (code, page) = sites.invitation(i?.data) ?: return false
@@ -454,14 +590,18 @@ class MainActivity : ComponentActivity(), Hote {
     // ---------- Cycle de vie : en salon, rien ne s'endort (voix, calage) ----------
     override fun onStart() {
         super.onStart()
-        if (::lecteur.isInitialized) { lecteur.onResume(); salon.onResume() }
+        if (::lecteur.isInitialized) { bulle.cacher(); lecteur.onResume(); salon.onResume() }
     }
     override fun onStop() {
         super.onStop()
-        if (::lecteur.isInitialized && !dansSalon) { lecteur.onPause(); salon.onPause() }
+        if (!::lecteur.isInitialized) return
+        // Mode A : on part regarder dans l'appli officielle ; le salon la suit dans une bulle (si Android l'autorise).
+        if (appliChoisie != null && dansSalon && !isChangingConfigurations) bulle.montrer(salon)
+        if (!dansSalon && appliChoisie == null) { lecteur.onPause(); salon.onPause() }
     }
     override fun onDestroy() {
         SalonService.surAction = null
+        if (::appli.isInitialized) { appli.arreter(); bulle.cacher() }
         if (::lecteur.isInitialized) {
             SalonService.arreter(this)
             lecteur.destroy(); salon.destroy()

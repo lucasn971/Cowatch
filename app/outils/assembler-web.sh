@@ -12,8 +12,8 @@ cp "$RACINE"/coeur/{player.js,clock.js,themes.js,panel.js,panel.css} "$SORTIE/co
 cp "$RACINE/engine.js" "$SORTIE/engine.js"
 cp "$RACINE"/fonts/*.woff "$RACINE/fonts/OFL-Barlow.txt" "$SORTIE/fonts/"
 cp "$RACINE"/icons/*.png "$SORTIE/icons/"
-cp "$RACINE"/app/web/{coque.js,fond.js,app.js,app.css} "$SORTIE/coque/"
-cp "$RACINE"/app/web/{accueil.html,accueil.js,accueil.css,sites.json} "$SORTIE/"
+cp "$RACINE"/app/web/{coque.js,fond.js,app.js,app.css,pilote.js} "$SORTIE/coque/"
+cp "$RACINE"/app/web/{accueil.html,accueil.js,accueil.css,sites.json,applis.json} "$SORTIE/"
 
 # Écran du salon = le panneau de l'extension + la coque chargée avant le cœur.
 PANEL="$RACINE/panel.html"
@@ -40,5 +40,20 @@ sed -e 's#<script src="coeur/themes.js"></script>#<script src="coque/coque.js"><
   echo 'if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", __cowatchRun, { once: true }); else __cowatchRun();'
   echo '})();'
 } > "$SORTIE/lecteur.js"
+# Mode A (Android) : page cachée qui présente le lecteur d'une appli officielle comme une <video> au cœur.
+# Notre propre page : la coque « lecteur » y est globale (pas besoin de portée fermée), player.js tourne tel quel.
+cat > "$SORTIE/pilote.html" <<'HTML'
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Cowatch · appli officielle</title></head>
+<body style="margin:0;background:#000">
+<script>var __COQUE_LECTEUR__ = true;</script>
+<script src="coque/coque.js"></script>
+<script>var chrome = __creerCoque('lecteur'); window.__piloteCoque = chrome.__coque;</script>
+<script src="coeur/themes.js"></script>
+<script src="coque/pilote.js"></script>
+<script src="coeur/player.js"></script>
+</body></html>
+HTML
+if command -v node >/dev/null; then node --check "$SORTIE/coque/pilote.js"; fi
 if command -v node >/dev/null; then node --check "$SORTIE/lecteur.js"; node --check "$SORTIE/coque/coque.js"; fi
 echo "Pages de l'appli assemblées dans $SORTIE"

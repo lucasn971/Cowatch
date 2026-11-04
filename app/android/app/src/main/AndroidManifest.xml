@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Le strict nécessaire. Pas d'accès aux contacts, à la position, à l'identifiant publicitaire ni à l'affichage
-         par-dessus les autres applis (le mode B garde la vidéo dans Cowatch). -->
+    <!-- Le strict nécessaire. Pas d'accès aux contacts, à la position ni à l'identifiant publicitaire.
+         Mode A (regarder dans l'appli officielle) : « afficher par-dessus » pour la bulle du salon, accordé à la main par
+         l'utilisateur, facultatif ; et l'accès aux lecteurs des autres applis (service EcouteNotifications ci-dessous). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -10,6 +11,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Mode A : pouvoir ouvrir ces applis officielles (et seulement elles), comme dans app/web/applis.json. -->
+    <queries>
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="com.canal.android.canal" />
+        <package android:name="com.crunchyroll.crunchyroid" />
+        <package android:name="com.amazon.avod.thirdpartyclient" />
+        <package android:name="com.disney.disneyplus" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="fr.tf1.mytf1" />
+        <package android:name="fr.m6.m6replay" />
+        <package android:name="fr.francetv.pluzz" />
+    </queries>
 
     <application
         android:label="@string/app_name"
@@ -51,5 +66,17 @@
             android:name=".SalonService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
+
+        <!-- Mode A : exigé par Android pour voir le lecteur des autres applis (MediaSessionManager). Volontairement vide :
+             Cowatch ne lit aucune notification (vérifié par zero-revente.js). -->
+        <service
+            android:name=".EcouteNotifications"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

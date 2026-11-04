@@ -26,6 +26,7 @@ const cas = [
   ['une adresse inconnue contactée par le moteur', d => ajouter(d, 'engine.js', "\nfetch('https://collecte.exemple.com/x');\n"), /collecte\.exemple\.com/],
   ['une lecture du presse-papiers (façon clipboard-watcher)', d => ajouter(d, 'app/web/app.js', '\nnavigator.clipboard.readText().then(() => {});\n'), /presse-papiers/],
   ['une lecture du presse-papiers Android', d => ajouter(d, 'app/android/app/src/main/java/fr/cowatch/app/Pont.kt', '\n// x\nval t = cm.primaryClip?.getItemAt(0)\n'), /presse-papiers Android/],
+  ['le mode A qui lirait les notifications', d => ajouter(d, 'app/android/app/src/main/java/fr/cowatch/app/EcouteNotifications.kt', '\nfun lire(sbn: android.service.notification.StatusBarNotification) = sbn.notification.extras\n'), /lecture des notifications/],
   ['une permission Android de plus (position)', d => remplacer(d, 'app/android/app/src/main/AndroidManifest.xml', '<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'), /ACCESS_FINE_LOCATION/],
   ['une permission d\'extension de plus (historique)', d => remplacer(d, 'manifest.json', '"storage",', '"storage",\n    "history",'), /permission d'extension en trop : history/],
   ['un accès de l\'extension à tous les sites', d => remplacer(d, 'manifest.json', '"*://*.netflix.com/*",', '"*://*.netflix.com/*",\n    "<all_urls>",'), /hors liste : <all_urls>/],

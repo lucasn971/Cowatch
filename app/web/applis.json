@@ -1,0 +1,14 @@
+{
+  "note": "Mode A (Android) : les applis officielles que Cowatch peut caler, par leur identifiant Android. Une appli absente de cette liste n'est jamais lue ni commandée ; si elle joue, Cowatch affiche seulement son identifiant pour qu'on l'ajoute après essai. etat : a-tester, ok, refuse.",
+  "applis": [
+    { "id": "netflix", "nom": "Netflix", "paquets": ["com.netflix.mediaclient"], "etat": "a-tester" },
+    { "id": "canalplus", "nom": "Canal+", "paquets": ["com.canal.android.canal"], "etat": "a-tester" },
+    { "id": "crunchyroll", "nom": "Crunchyroll", "paquets": ["com.crunchyroll.crunchyroid"], "etat": "a-tester" },
+    { "id": "primevideo", "nom": "Prime Video", "paquets": ["com.amazon.avod.thirdpartyclient"], "etat": "a-tester" },
+    { "id": "disneyplus", "nom": "Disney+", "paquets": ["com.disney.disneyplus"], "etat": "a-tester" },
+    { "id": "youtube", "nom": "YouTube", "paquets": ["com.google.android.youtube"], "etat": "a-tester" },
+    { "id": "tf1", "nom": "TF1+", "paquets": ["fr.tf1.mytf1"], "etat": "a-tester" },
+    { "id": "m6", "nom": "M6+", "paquets": ["fr.m6.m6replay"], "etat": "a-tester" },
+    { "id": "francetv", "nom": "france.tv", "paquets": ["fr.francetv.pluzz"], "etat": "a-tester" }
+  ]
+}
