@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône v2 « A Brume » (choisie par Lucas le 04/11/2026) : motif seul, posé sur le fond uni #16231F.
+     Dessin de 512 réduit à 96 dp et centré dans les 108 dp de l'icône « adaptive » : tout tient dans le cercle sûr de 66 dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="6" android:translateY="6" android:scaleX="0.1875" android:scaleY="0.1875">
+        <path android:fillColor="#6CC4AC" android:pathData="M 88,256 a 118,118 0 1,0 236,0 a 118,118 0 1,0 -236,0"/>
+        <path android:strokeColor="#D7E6DF" android:strokeAlpha="0.9" android:strokeWidth="28" android:pathData="M 202,256 a 104,104 0 1,0 208,0 a 104,104 0 1,0 -208,0"/>
+        <path android:fillColor="#16231F" android:strokeColor="#16231F" android:strokeWidth="6" android:strokeLineJoin="round" android:pathData="M240,222 L240,290 L290,256 Z"/>
+    </group>
+</vector>

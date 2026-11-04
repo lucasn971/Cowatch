@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Version monochrome (icônes à thème d'Android 13+) : Android la colore lui-même ; la lecture est un creux. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="6" android:translateY="6" android:scaleX="0.1875" android:scaleY="0.1875">
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M 88,256 a 118,118 0 1,0 236,0 a 118,118 0 1,0 -236,0 M240,222 L240,290 L290,256 Z"/>
+        <path android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.6" android:strokeWidth="28" android:pathData="M 202,256 a 104,104 0 1,0 208,0 a 104,104 0 1,0 -208,0"/>
+    </group>
+</vector>
